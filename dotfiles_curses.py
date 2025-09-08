@@ -74,18 +74,27 @@ class CursesDotfilesManager:
         dialog = curses.newwin(dialog_height, dialog_width, start_y, start_x)
         self.draw_border(dialog, title)
         
-        dialog.addstr(2, 2, prompt)
-        dialog.addstr(4, 2, default)
+        # Safely add text with length limits
+        prompt_text = prompt[:dialog_width-6]
+        default_text = default[:dialog_width-6]
+        
+        dialog.addstr(2, 2, prompt_text)
+        dialog.addstr(4, 2, default_text)
         dialog.refresh()
         
         # Enable cursor and text input
         curses.curs_set(1)
         input_win = curses.newwin(1, dialog_width - 6, start_y + 4, start_x + 2)
-        input_win.addstr(0, 0, default)
-        input_win.refresh()
         
-        result = ""
-        pos = len(default)
+        result = default_text
+        pos = len(result)
+        
+        # Initial display
+        input_win.clear()
+        if result:
+            input_win.addstr(0, 0, result)
+        input_win.move(0, pos)
+        input_win.refresh()
         
         while True:
             key = input_win.getch()
@@ -93,29 +102,26 @@ class CursesDotfilesManager:
             if key == ord('\n') or key == 10:  # Enter
                 break
             elif key == 27:  # Escape
-                result = None
+                result = default_text
                 break
             elif key == curses.KEY_BACKSPACE or key == 127:
                 if pos > 0:
                     pos -= 1
                     result = result[:pos] + result[pos+1:]
-                    input_win.clear()
-                    input_win.addstr(0, 0, result)
-                    input_win.move(0, pos)
-            elif 32 <= key <= 126:  # Printable characters
+            elif 32 <= key <= 126 and len(result) < dialog_width - 8:  # Printable characters with limit
                 result = result[:pos] + chr(key) + result[pos:]
                 pos += 1
-                input_win.clear()
-                input_win.addstr(0, 0, result)
-                input_win.move(0, pos)
             
+            # Update display safely
+            input_win.clear()
+            display_text = result[:dialog_width-8]
+            if display_text:
+                input_win.addstr(0, 0, display_text)
+            input_win.move(0, min(pos, dialog_width-9))
             input_win.refresh()
         
         curses.curs_set(0)
-        dialog.clear()
-        dialog.refresh()
-        
-        return result if result is not None else default
+        return result
     
     def multi_select_files(self):
         """Curses-based multi-select file browser"""
@@ -600,13 +606,14 @@ class CursesDotfilesManager:
             height, width = self.stdscr.getmaxyx()
             
             self.stdscr.addstr(0, 0, " " * width, curses.color_pair(1))
-            self.stdscr.addstr(0, 2, "📂 Search Paths", curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(0, 2, "Search Paths", curses.color_pair(1) | curses.A_BOLD)
             
             self.stdscr.addstr(2, 2, "Current search paths:", curses.color_pair(6))
             
-            for i, path in enumerate(paths):
+            for i, path in enumerate(paths[:height-8]):
                 color = curses.color_pair(3) if Path(path).expanduser().exists() else curses.color_pair(4)
-                self.stdscr.addstr(4 + i, 4, f"{i+1}. {path}", color)
+                path_text = f"{i+1}. {path}"[:width-6]
+                self.stdscr.addstr(4 + i, 4, path_text, color)
             
             self.stdscr.addstr(height - 4, 2, "Commands: [A]dd, [R]emove, [ESC] Back", curses.color_pair(6))
             
@@ -615,21 +622,25 @@ class CursesDotfilesManager:
             key = self.stdscr.getch()
             
             if key == ord('a') or key == ord('A'):
-                new_path = self.input_dialog("Add Search Path", "Enter new search path:")
-                if new_path:
-                    self.config.add_search_path(new_path)
-                    self.show_status(f"Added search path: {new_path}", curses.color_pair(3))
+                new_path = self.input_dialog("Add Search Path", "Enter new search path:", "~/")
+                if new_path and new_path.strip():
+                    self.config.add_search_path(new_path.strip())
+                    self.show_status(f"Added: {new_path}", curses.color_pair(3))
+                    # Stay in this menu
             elif key == ord('r') or key == ord('R'):
                 if paths:
-                    idx_str = self.input_dialog("Remove Path", f"Enter number (1-{len(paths)}):")
+                    idx_str = self.input_dialog("Remove Path", f"Enter number (1-{len(paths)}):", "1")
                     try:
                         idx = int(idx_str) - 1
                         if 0 <= idx < len(paths):
                             removed_path = paths[idx]
                             self.config.remove_search_path(removed_path)
-                            self.show_status(f"Removed search path: {removed_path}", curses.color_pair(3))
-                    except ValueError:
-                        self.show_status("Invalid number", curses.color_pair(4))
+                            self.show_status(f"Removed: {removed_path}", curses.color_pair(3))
+                            # Stay in this menu
+                        else:
+                            self.show_status("Invalid number", curses.color_pair(4))
+                    except (ValueError, IndexError):
+                        self.show_status("Invalid input", curses.color_pair(4))
             elif key == 27:  # Escape
                 break
     
@@ -642,27 +653,30 @@ class CursesDotfilesManager:
             
             self.stdscr.clear()
             height, width = self.stdscr.getmaxyx()
-            content_height = height - 6
+            content_height = height - 8
             
             self.stdscr.addstr(0, 0, " " * width, curses.color_pair(1))
-            self.stdscr.addstr(0, 2, "🚫 Gitignore Patterns", curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(0, 2, "Gitignore Patterns", curses.color_pair(1) | curses.A_BOLD)
             
-            self.stdscr.addstr(2, 2, f"Current patterns ({len(patterns)} total):", curses.color_pair(6))
+            self.stdscr.addstr(2, 2, f"Patterns ({len(patterns)} total):", curses.color_pair(6))
             
-            for i in range(min(content_height, len(patterns) - scroll_offset)):
+            # Show patterns with safe text handling
+            display_count = min(content_height, len(patterns))
+            for i in range(display_count):
                 pattern_idx = scroll_offset + i
                 if pattern_idx < len(patterns):
                     pattern = patterns[pattern_idx]
-                    line = f"{pattern_idx+1:3d}. {pattern}"[:width-6]
-                    self.stdscr.addstr(4 + i, 4, line, curses.color_pair(0))
+                    line = f"{pattern_idx+1:3d}. {pattern}"
+                    safe_line = line[:width-6] if len(line) > width-6 else line
+                    self.stdscr.addstr(4 + i, 4, safe_line, curses.color_pair(0))
             
             # Scroll indicators
             if scroll_offset > 0:
-                self.stdscr.addstr(4, width-3, "↑", curses.color_pair(6))
+                self.stdscr.addstr(4, width-3, "^", curses.color_pair(6))
             if scroll_offset + content_height < len(patterns):
-                self.stdscr.addstr(height-3, width-3, "↓", curses.color_pair(6))
+                self.stdscr.addstr(height-3, width-3, "v", curses.color_pair(6))
             
-            self.stdscr.addstr(height - 4, 2, "Commands: [A]dd, [R]emove, [↑↓] Scroll, [ESC] Back", curses.color_pair(6))
+            self.stdscr.addstr(height - 4, 2, "[A]dd [R]emove [Up/Down]Scroll [ESC]Back", curses.color_pair(6))
             
             self.stdscr.refresh()
             
@@ -673,21 +687,23 @@ class CursesDotfilesManager:
             elif key == curses.KEY_DOWN and scroll_offset + content_height < len(patterns):
                 scroll_offset += 1
             elif key == ord('a') or key == ord('A'):
-                new_pattern = self.input_dialog("Add Gitignore Pattern", "Enter pattern (e.g., *.log):")
-                if new_pattern:
-                    self.config.add_gitignore_pattern(new_pattern)
-                    self.show_status(f"Added gitignore pattern: {new_pattern}", curses.color_pair(3))
+                new_pattern = self.input_dialog("Add Pattern", "Pattern (e.g. *.log):", "*.")
+                if new_pattern and new_pattern.strip():
+                    self.config.add_gitignore_pattern(new_pattern.strip())
+                    self.show_status(f"Added: {new_pattern}", curses.color_pair(3))
             elif key == ord('r') or key == ord('R'):
                 if patterns:
-                    idx_str = self.input_dialog("Remove Pattern", f"Enter number (1-{len(patterns)}):")
+                    idx_str = self.input_dialog("Remove", f"Number (1-{len(patterns)}):", "1")
                     try:
                         idx = int(idx_str) - 1
                         if 0 <= idx < len(patterns):
                             removed_pattern = patterns[idx]
                             self.config.remove_gitignore_pattern(removed_pattern)
-                            self.show_status(f"Removed pattern: {removed_pattern}", curses.color_pair(3))
-                    except ValueError:
-                        self.show_status("Invalid number", curses.color_pair(4))
+                            self.show_status(f"Removed: {removed_pattern[:20]}...", curses.color_pair(3))
+                        else:
+                            self.show_status("Invalid number", curses.color_pair(4))
+                    except (ValueError, IndexError):
+                        self.show_status("Invalid input", curses.color_pair(4))
             elif key == 27:  # Escape
                 break
     
@@ -700,35 +716,38 @@ class CursesDotfilesManager:
             height, width = self.stdscr.getmaxyx()
             
             self.stdscr.addstr(0, 0, " " * width, curses.color_pair(1))
-            self.stdscr.addstr(0, 2, "📄 File Patterns", curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(0, 2, "File Patterns", curses.color_pair(1) | curses.A_BOLD)
             
             self.stdscr.addstr(2, 2, "File patterns to include:", curses.color_pair(6))
             
-            for i, pattern in enumerate(patterns):
-                self.stdscr.addstr(4 + i, 4, f"{i+1}. {pattern}", curses.color_pair(0))
+            for i, pattern in enumerate(patterns[:height-8]):
+                pattern_text = f"{i+1}. {pattern}"[:width-6]
+                self.stdscr.addstr(4 + i, 4, pattern_text, curses.color_pair(0))
             
-            self.stdscr.addstr(height - 4, 2, "Commands: [A]dd, [R]emove, [ESC] Back", curses.color_pair(6))
+            self.stdscr.addstr(height - 4, 2, "[A]dd [R]emove [ESC]Back", curses.color_pair(6))
             
             self.stdscr.refresh()
             
             key = self.stdscr.getch()
             
             if key == ord('a') or key == ord('A'):
-                new_pattern = self.input_dialog("Add File Pattern", "Enter pattern (e.g., *.conf):")
-                if new_pattern:
-                    self.config.add_file_pattern(new_pattern)
-                    self.show_status(f"Added file pattern: {new_pattern}", curses.color_pair(3))
+                new_pattern = self.input_dialog("Add Pattern", "Pattern (e.g. *.conf):", "*.")
+                if new_pattern and new_pattern.strip():
+                    self.config.add_file_pattern(new_pattern.strip())
+                    self.show_status(f"Added: {new_pattern}", curses.color_pair(3))
             elif key == ord('r') or key == ord('R'):
                 if patterns:
-                    idx_str = self.input_dialog("Remove Pattern", f"Enter number (1-{len(patterns)}):")
+                    idx_str = self.input_dialog("Remove", f"Number (1-{len(patterns)}):", "1")
                     try:
                         idx = int(idx_str) - 1
                         if 0 <= idx < len(patterns):
                             removed_pattern = patterns[idx]
                             self.config.remove_file_pattern(removed_pattern)
-                            self.show_status(f"Removed pattern: {removed_pattern}", curses.color_pair(3))
-                    except ValueError:
-                        self.show_status("Invalid number", curses.color_pair(4))
+                            self.show_status(f"Removed: {removed_pattern}", curses.color_pair(3))
+                        else:
+                            self.show_status("Invalid number", curses.color_pair(4))
+                    except (ValueError, IndexError):
+                        self.show_status("Invalid input", curses.color_pair(4))
             elif key == 27:  # Escape
                 break
     

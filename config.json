@@ -1,8 +1,6 @@
 {
   "search_paths": [
     "~/.config",
-    "~/.local/share",
-    "~/",
     "~/.cache"
   ],
   "file_patterns": [
@@ -77,7 +75,7 @@
   "sort_files_by": "name",
   "color_scheme": {
     "header": "blue",
-    "selected": "white_on_blue", 
+    "selected": "white_on_blue",
     "success": "green",
     "error": "red",
     "warning": "yellow",
@@ -85,9 +83,22 @@
     "special": "magenta"
   },
   "keybindings": {
-    "select_all": ["a", "A"],
-    "select_none": ["n", "N"],
-    "quit": ["q", "Q"],
-    "help": ["h", "H", "?"]
+    "select_all": [
+      "a",
+      "A"
+    ],
+    "select_none": [
+      "n",
+      "N"
+    ],
+    "quit": [
+      "q",
+      "Q"
+    ],
+    "help": [
+      "h",
+      "H",
+      "?"
+    ]
   }
 }

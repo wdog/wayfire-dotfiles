@@ -128,38 +128,50 @@ class ConfigManager:
         files = []
         home_path = Path.home()
         
+        # Limit search depth to avoid performance issues
+        max_depth = 3
+        
         for search_path in self.get_search_paths():
             if not search_path.exists():
                 continue
             
             try:
-                for file_path in search_path.rglob('*'):
-                    if not file_path.is_file():
-                        continue
-                    
-                    # Check if file should be included
-                    if not self.should_include_file(file_path):
-                        continue
-                    
-                    try:
-                        relative_path = file_path.relative_to(home_path)
-                        if pattern.lower() in str(relative_path).lower():
-                            files.append(str(relative_path))
-                    except ValueError:
-                        # File is not relative to home, skip it
-                        continue
+                # Use iterdir for better performance, limited recursion
+                self._scan_directory(search_path, home_path, files, pattern, 0, max_depth)
             except (PermissionError, OSError):
                 continue
         
-        # Sort files
-        if self.config["sort_files_by"] == "name":
-            files.sort()
-        elif self.config["sort_files_by"] == "path":
-            files.sort(key=lambda x: (Path(x).parent, Path(x).name))
-        elif self.config["sort_files_by"] == "size":
-            files.sort(key=lambda x: (home_path / x).stat().st_size if (home_path / x).exists() else 0)
+        # Remove duplicates and sort
+        files = list(set(files))
+        files.sort()
         
         return files
+    
+    def _scan_directory(self, dir_path: Path, home_path: Path, files: List[str], pattern: str, depth: int, max_depth: int):
+        """Recursively scan directory with depth limit"""
+        if depth > max_depth:
+            return
+            
+        try:
+            for item in dir_path.iterdir():
+                # Skip if excluded directory
+                if item.is_dir() and item.name in self.config["exclude_dirs"]:
+                    continue
+                    
+                if item.is_file():
+                    # Check if file should be included
+                    if self.should_include_file(item):
+                        try:
+                            relative_path = item.relative_to(home_path)
+                            if pattern.lower() in str(relative_path).lower():
+                                files.append(str(relative_path))
+                        except ValueError:
+                            continue
+                elif item.is_dir() and depth < max_depth:
+                    # Recurse into subdirectory
+                    self._scan_directory(item, home_path, files, pattern, depth + 1, max_depth)
+        except (PermissionError, OSError):
+            pass
     
     def update_gitignore(self):
         """Update .gitignore file with patterns from config"""
