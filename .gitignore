@@ -1,4 +1,7 @@
 
+# Claude Code configuration
+CLAUDE.md
+
 # Auto-generated patterns from dotfiles manager config
 *.log
 *.tmp
