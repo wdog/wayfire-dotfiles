@@ -2,6 +2,9 @@
 # Claude Code configuration
 CLAUDE.md
 
+# Test files
+test_keys.py
+
 # Auto-generated patterns from dotfiles manager config
 *.log
 *.tmp
