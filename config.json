@@ -1,0 +1,42 @@
+{
+  "include_paths": [
+    "~/.config",
+    "~/"
+  ],
+  
+  "include_extensions": [
+    "*.ini",
+    "*.conf",
+    "*.config",
+    "*.json",
+    "*.yaml",
+    "*.yml",
+    "*.toml",
+    ".*rc",
+    ".gitconfig",
+    ".vimrc",
+    ".profile"
+  ],
+  
+  "exclude_paths": [
+    "*/cache/*",
+    "*/Cache/*",
+    "*/.git/*",
+    "*/node_modules/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/logs/*",
+    "*/tmp/*",
+    "*/temp/*"
+  ],
+  
+  "exclude_extensions": [
+    "*.log",
+    "*.pid",
+    "*.lock",
+    "*.pyc",
+    "*.swp",
+    "*.tmp",
+    "*~"
+  ]
+}
