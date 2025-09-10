@@ -1,0 +1,21 @@
+* {
+font-family: "Roboto Condensed";
+font-size: 15px;
+}
+
+button.activated {
+    background: #99c9ff;
+    color: #333333;
+}
+
+calendar {
+    border: none;
+    background: none;
+    font-size: 24px;
+    padding:4px;
+}
+
+calendar:selected {
+    background-color: lime;
+    color: black;
+}
