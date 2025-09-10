@@ -127,74 +127,34 @@ class DotfilesManager:
         console.print(header_panel)
         console.print()
 
-    def create_menu_items(self):
-        """Create ultra-compact centered menu items with equal row lengths"""
+    def display_menu(self):
+        """Display the main menu and handle navigation - simple approach"""
+        console.clear()
+        
+        # Create menu content
         menu_lines = []
-
-        # Find the longest text to make all rows equal length
-        max_length = 0
-        all_texts = []
-
         for i, (num, title, desc) in enumerate(self.menu_options):
             if i == self.selected_option:
-                text_content = f"► [{num}] {title}"
-            else:
-                text_content = f"· [{num}] {title}"
-            all_texts.append(text_content)
-            max_length = max(max_length, len(text_content))
-
-        # Create menu items with equal lengths
-        for i, (num, title, desc) in enumerate(self.menu_options):
-            is_selected = (i == self.selected_option)
-            text_content = all_texts[i]
-
-            # Add left margin and pad to max length for equal row widths
-            margin = "        "  # 8 spaces left margin
-            padded_text = margin + text_content + " " * (max_length - len(text_content))
-
-            # Create format without row highlighting
-            if is_selected:
                 if num == "5":  # Quit option
-                    line_text = Text(padded_text, style=f"bold red")
-                    border_char = "═"
-                    border_color = "red"
+                    menu_lines.append(Text(f"        ► [{num}] {title}", style="bold red"))
                 else:
-                    line_text = Text(padded_text, style=f"bold {LIME_ACCENT}")
-                    border_char = "═"
-                    border_color = LIME_ACCENT
+                    menu_lines.append(Text(f"        ► [{num}] {title}", style=f"bold {LIME_ACCENT}"))
             else:
-                line_text = Text(padded_text, style="dim white")  # Light gray for unselected
-                if num == "5":  # Quit option
-                    border_char = "─"
-                    border_color = "#FF6B6B"
-                else:
-                    border_char = "─"
-                    border_color = LIME_DARK
+                menu_lines.append(Text(f"        · [{num}] {title}", style="dim white"))
 
-            # Add the text line
-            menu_lines.append(line_text)
-
-            # Add bottom border line with same length including margin
-            border_line = Text(margin + border_char * max_length, style=border_color)
-            menu_lines.append(border_line)
-
-        return menu_lines
-
-    def display_menu(self):
-        """Display styled compact menu"""
-        console.clear()
-
-        # Create menu items
-        menu_lines = self.create_menu_items()
-
-        # Create smaller header inside panel
-        inner_header = Text("Manage your Wayfire configuration files", style=LIME_SECONDARY, justify="center")
-
-        # Create renderable content for the panel with inner header
-        from rich.console import Group
-        menu_content = Group(inner_header, Text(""), *menu_lines)
-
-        # Wrap menu in a panel with title
+        # Create header
+        header = Text("Manage your Wayfire configuration files", style=LIME_SECONDARY, justify="center")
+        
+        # Create complete menu content
+        menu_content = Group(
+            header,
+            Text(""),
+            *menu_lines,
+            Text(""),
+            Text("↑↓/ws: navigate • Enter: select • 1-5: direct • q: quit", style=LIME_SECONDARY, justify="center")
+        )
+        
+        # Display menu panel
         menu_panel = Panel(
             menu_content,
             title="🐉 WAYFIRE DOTFILES MANAGER",
@@ -204,44 +164,37 @@ class DotfilesManager:
             box=box.ROUNDED,
             padding=(1, 1)
         )
-
+        
         console.print(menu_panel)
 
-        # Show navigation instructions at bottom
-        console.print(Text("↑↓/ws: navigate • Enter: select • 1-5: direct • q: quit", style=LIME_SECONDARY), justify="center")
-
     def handle_menu_navigation(self):
-        """Handle universal arrow key navigation using getch"""
-
-        try:
-            while True:
-                # Get single character input (handles arrow keys automatically)
+        """Handle menu navigation with simple clear/print approach"""
+        while True:
+            self.display_menu()
+            
+            try:
                 key = get_key()
-
+                
                 # Handle arrow keys
                 if key == '\x1b[A':  # Up arrow
                     self.selected_option = (self.selected_option - 1) % 5
-                    self.display_menu()
                 elif key == '\x1b[B':  # Down arrow
                     self.selected_option = (self.selected_option + 1) % 5
-                    self.display_menu()
-
                 # Handle regular keys
                 elif key.lower() == 'w' or key.lower() == 'k':  # Up
                     self.selected_option = (self.selected_option - 1) % 5
-                    self.display_menu()
                 elif key.lower() == 's' or key.lower() == 'j':  # Down
                     self.selected_option = (self.selected_option + 1) % 5
-                    self.display_menu()
                 elif key == '\r' or key == '\n':  # Enter
                     return self.selected_option + 1
                 elif key.lower() == 'q' or key == '\x1b':  # Quit (q or Esc)
                     return 5
                 elif key.isdigit() and 1 <= int(key) <= 5:  # Direct number selection
                     return int(key)
+                    
+            except KeyboardInterrupt:
+                return 5
 
-        except KeyboardInterrupt:
-            return 5
 
     def view_modified_files(self):
         """Menu option 1: View modified files"""
@@ -406,8 +359,8 @@ class DotfilesManager:
                 columns = 2
                 max_item_width = (terminal_size.width - 10) // columns  # Account for panel borders and spacing
                 
-                # Calculate visible area (reserve lines for panel borders, internal footer, and search)
-                visible_height = max(1, terminal_height - 12)  # Account for panel borders, footer, and search line
+                # Calculate visible area (reserve lines for panel borders, footer, and instructions)
+                visible_height = max(1, terminal_height - 15)  # More conservative height calculation
                 visible_rows = visible_height
                 items_per_screen = columns * visible_rows
                 
@@ -427,8 +380,7 @@ class DotfilesManager:
                 else:
                     current_row = current_col = 0
                 
-                # Clear screen and prepare content
-                console.clear()
+                # Only clear screen when content changes significantly
                 
                 # Prepare file list content in columns
                 file_content = []
@@ -519,17 +471,14 @@ class DotfilesManager:
                 # Header with current directory
                 current_dir_display = current_dir.replace(os.path.expanduser('~'), '~')
                 
-                # Only clear screen when really needed to reduce flicker
+                # Clear screen and display panel
                 console.clear()
-                
-                # Create panel with all content inside, ensuring proper width
                 console.print(Panel(
                     Group(*file_content),
                     title=f"📁 FILE BROWSER - {current_dir_display}",
                     title_align="left",
                     border_style=LIME_ACCENT,
-                    padding=(0, 1),
-                    width=terminal_size.width
+                    padding=(0, 1)
                 ))
             
             # Handle input
@@ -782,18 +731,19 @@ class DotfilesManager:
         """Main application loop"""
         try:
             while self.running:
-                self.display_menu()
                 choice = self.handle_menu_navigation()
 
-                console.clear()
-
                 if choice == 1:
+                    console.clear()
                     self.view_modified_files()
                 elif choice == 2:
+                    console.clear()
                     self.add_remove_files()
                 elif choice == 3:
+                    console.clear()
                     self.settings()
                 elif choice == 4:
+                    console.clear()
                     self.restore_files()
                 elif choice == 5:
                     self.quit_application()
@@ -805,13 +755,7 @@ class DotfilesManager:
 
 def main():
     """Entry point"""
-    # Check if we're in the virtual environment
-    if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        console.print("[yellow]Warning: You might want to activate the virtual environment first:[/]")
-        console.print("[cyan]source venv/bin/activate[/]")
-        console.print()
-
-    # Create and run the dotfiles manager
+    # Create and run the dotfiles manager directly
     manager = DotfilesManager()
     manager.run()
 
