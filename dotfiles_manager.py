@@ -986,6 +986,115 @@ class DotfilesManager:
                 else:
                     return  # Cancel on Ctrl+C
 
+    def create_gitignore_management(self):
+        """Create .gitignore management directory and default .gitignore file"""
+        config_dir = os.path.expanduser("~/.config/dotfiles-manager")
+        gitignore_path = os.path.join(config_dir, ".gitignore")
+
+        # Create directory if it doesn't exist
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+            console.print(f"[{LIME_PRIMARY}]  ✅ Created config directory: {config_dir}[/]")
+
+        # Create default .gitignore if it doesn't exist
+        if not os.path.exists(gitignore_path):
+            default_gitignore = """# Default gitignore patterns for dotfiles repository
+# Generated automatically by Wayfire Dotfiles Manager
+
+# System and temporary files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+*.orig
+*.rej
+
+# Cache directories
+.cache/
+*/.cache/
+**/.cache/
+
+# User directories that should typically not be tracked
+Downloads/
+Documents/
+Pictures/
+Videos/
+Music/
+Desktop/
+Public/
+Templates/
+
+# Application caches and state
+.local/share/Trash/
+.local/share/recently-used.xbel
+.local/share/Steam/
+.mozilla/
+.thunderbird/
+.wine/
+.PlayOnLinux/
+
+# Development directories
+node_modules/
+.git/
+.svn/
+.hg/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Package manager caches
+.npm/
+.yarn/
+.cargo/
+.rustup/
+go/pkg/
+go/bin/
+
+# Browser profiles (contain sensitive data)
+.firefox/
+.chromium/
+.google-chrome/
+snap/
+
+# Logs and temporary data
+*.log
+logs/
+tmp/
+temp/
+
+# SSH keys and sensitive files
+.ssh/id_*
+.ssh/known_hosts
+.gnupg/
+.password-store/
+
+# Application specific
+.steam/
+.local/share/Steam/
+.minecraft/
+.wine/
+"""
+            with open(gitignore_path, 'w') as f:
+                f.write(default_gitignore)
+            console.print(f"[{LIME_PRIMARY}]  ✅ Created default .gitignore: {gitignore_path}[/]")
+        else:
+            console.print(f"[{LIME_PRIMARY}]  ✅ .gitignore already exists: {gitignore_path}[/]")
+
+        return gitignore_path
+
     def initialize_git_repo(self):
         """Initialize bare git repository for dotfiles management"""
         console.clear()
@@ -1164,8 +1273,12 @@ class DotfilesManager:
 
             console.print(f"[{LIME_PRIMARY}]  ✅ Repository bare creato: {git_dir}[/]")
             
-            # Passo 3: Configurazione repository
-            console.print(f"[{LIME_ACCENT}]⚙️  Passo 3/5: Configurazione repository...[/]")
+            # Passo 3: Creazione .gitignore management
+            console.print(f"[{LIME_ACCENT}]📝 Passo 3/6: Configurazione .gitignore...[/]")
+            gitignore_path = self.create_gitignore_management()
+
+            # Passo 4: Configurazione repository
+            console.print(f"[{LIME_ACCENT}]⚙️  Passo 4/6: Configurazione repository...[/]")
 
             # Create git alias command for easier management
             alias_command = f'git --git-dir="{git_dir}" --work-tree="{work_tree}"'
@@ -1173,7 +1286,8 @@ class DotfilesManager:
             # Set up initial configuration for bare repository
             config_commands = [
                 (['git', '--git-dir', git_dir, 'config', 'status.showUntrackedFiles', 'no'], "Nascondere file non tracciati"),
-                (['git', '--git-dir', git_dir, 'config', 'core.worktree', work_tree], "Configurare work tree")
+                (['git', '--git-dir', git_dir, 'config', 'core.worktree', work_tree], "Configurare work tree"),
+                (['git', '--git-dir', git_dir, 'config', 'core.excludesfile', gitignore_path], "Configurare .gitignore globale")
             ]
 
             for cmd, description in config_commands:
