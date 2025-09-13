@@ -74,14 +74,40 @@ def get_key():
             try:
                 tty.setraw(sys.stdin.fileno())
                 key = sys.stdin.read(1)
-                if key == KeyCodes.ESC:  # ANSI escape sequences (arrows, function keys, etc.)
-                    key += sys.stdin.read(2)
+                if key == KeyCodes.ESC:  # Check if it's an escape sequence or standalone ESC
+                    # Use select to check if more data is available without blocking
+                    import select
+                    if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+                        # More data available - it's an escape sequence
+                        key += sys.stdin.read(2)
+                    # If no more data, it's a standalone ESC key
                 return key
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except Exception:
         # Ultimate fallback to regular input
         return input().strip() or KeyCodes.ENTER
+
+def wait_for_key():
+    """Wait for any key press, supporting ESC to cancel"""
+    key = get_key()
+    return key not in [KeyCodes.ESC, 'q', 'Q']
+
+def get_confirmation(prompt, default='n'):
+    """Get s/n confirmation with ESC support"""
+    while True:
+        console.print(f"[yellow]{prompt} (s/n/ESC): [/]", end="")
+        key = get_key()
+        console.print(key)  # Echo the key
+
+        if key == KeyCodes.ESC or key.lower() == 'q':
+            return False  # ESC or Q cancels
+        elif key.lower() == 's':
+            return True
+        elif key.lower() == 'n':
+            return False
+        elif key == KeyCodes.ENTER:
+            return default.lower() == 's'
 
 # Theme colors
 LIME_PRIMARY = "#32CD32"      # Lime green
@@ -243,8 +269,8 @@ class DotfilesManager:
             title="View Modified Files",
             border_style=LIME_ACCENT
         ))
-        console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press Enter to continue...[/]")
-        input()
+        console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press any key to continue (ESC to cancel)...[/]")
+        wait_for_key()
 
     def get_directory_contents(self, directory):
         """Get files and directories in the current directory"""
@@ -644,8 +670,8 @@ class DotfilesManager:
         if failed_files:
             console.print(f"[red]Failed: {len(failed_files)} files[/red]")
             
-        console.print(f"\n[{LIME_SECONDARY}]Press Enter to continue...[/]")
-        input()
+        console.print(f"\n[{LIME_SECONDARY}]Press any key to continue (ESC to cancel)...[/]")
+        wait_for_key()
     
     def add_remove_files(self):
         """Menu option 2: Add/Remove files with file browser"""
@@ -851,8 +877,8 @@ class DotfilesManager:
                     # In navigation mode
                     key = get_key()
 
-                    if key == 'q':
-                        return  # Cancel and go back
+                    if key.lower() == 'q' or key == KeyCodes.ESC:
+                        return  # Cancel and go back (Q key or Escape)
 
                     elif key == 's':
                         # Save all changes
@@ -860,7 +886,8 @@ class DotfilesManager:
                         if self.save_config():
                             console.clear()
                             console.print(f"[{LIME_PRIMARY}]✓ Tutte le configurazioni salvate con successo![/]")
-                            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+                            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
+                            wait_for_key()
                         return
 
                     elif key == 'r':
@@ -898,10 +925,11 @@ class DotfilesManager:
 
                         console.print(confirmation_panel)
 
-                        if console.input(f"[yellow]Scelta: [/]").strip().lower() == 's':
+                        if get_confirmation("Vuoi resettare questo campo al valore di default?"):
                             temp_config[field['key']] = default_value
                             console.print(f"[{LIME_PRIMARY}]✓ Campo '{field['label']}' resettato al default![/]")
-                            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+                            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
+                            wait_for_key()
 
                     elif key == KeyCodes.ARROW_UP:
                         # Move up in form (Arrow Up key)
@@ -954,14 +982,15 @@ class DotfilesManager:
         # Check if git directory already exists
         if os.path.exists(git_dir):
             console.print(f"[yellow]⚠️  Il directory {git_dir} esiste già![/yellow]")
-            if console.input("[yellow]Continuare comunque? (s/N): [/]").strip().lower() != 's':
+            if not get_confirmation("Continuare comunque?"):
                 return
         
         # Confirm initialization
         console.print()
-        if console.input(f"[{LIME_ACCENT}]Procedere con l'inizializzazione? (s/N): [/]").strip().lower() != 's':
+        if not get_confirmation("Procedere con l'inizializzazione?"):
             console.print(f"[{LIME_SECONDARY}]Operazione annullata.[/]")
-            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
+            wait_for_key()
             return
         
         console.print()
@@ -984,13 +1013,12 @@ class DotfilesManager:
             # Create git alias command for easier management
             alias_command = f'git --git-dir="{git_dir}" --work-tree="{work_tree}"'
             
-            # Set up initial configuration
+            # Set up initial configuration for bare repository
             config_commands = [
-                [alias_command.split() + ['config', 'status.showUntrackedFiles', 'no']],
-                [alias_command.split() + ['config', 'core.bare', 'false']],
-                [alias_command.split() + ['config', 'core.worktree', work_tree]]
+                ['git', '--git-dir', git_dir, 'config', 'status.showUntrackedFiles', 'no'],
+                ['git', '--git-dir', git_dir, 'config', 'core.worktree', work_tree]
             ]
-            
+
             for cmd in config_commands:
                 subprocess.run(cmd, check=True, capture_output=True)
             
@@ -1000,7 +1028,7 @@ class DotfilesManager:
             if remote_url:
                 try:
                     subprocess.run(
-                        alias_command.split() + ['remote', 'add', 'origin', remote_url],
+                        ['git', '--git-dir', git_dir, 'remote', 'add', 'origin', remote_url],
                         check=True, capture_output=True
                     )
                     console.print(f"[{LIME_PRIMARY}]✓ Remote 'origin' aggiunto: {remote_url}[/]")
@@ -1032,7 +1060,8 @@ class DotfilesManager:
             console.print(f"[red]❌ Errore imprevisto: {str(e)}[/red]")
         
         console.print()
-        console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+        console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
+        wait_for_key()
 
     def restore_files(self):
         """Menu option 4: Restore files"""
@@ -1042,8 +1071,8 @@ class DotfilesManager:
             title="Restore Files",
             border_style=LIME_ACCENT
         ))
-        console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press Enter to continue...[/]")
-        input()
+        console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press any key to continue (ESC to cancel)...[/]")
+        wait_for_key()
 
     def quit_application(self):
         """Menu option 5: Quit"""
