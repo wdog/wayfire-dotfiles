@@ -69,7 +69,7 @@ if ! git diff --cached --quiet || ! git diff --quiet; then
 - Add new features and fix existing issues"
     fi
 
-    # Commit with generated message
+    # Commit with clean technical message (NO AI references)
     git commit -m "$commit_msg"
 
     # Push to remote
@@ -85,4 +85,4 @@ else
 fi
 ```
 
-Usage: Execute this command whenever you need to commit and push changes. It automatically generates appropriate technical commit messages based on which files were modified, without ever mentioning AI assistance.
+Usage: Execute this command whenever you need to commit and push changes. It automatically generates clean technical commit messages focused purely on the changes made, without any references to AI assistance or development tools.
