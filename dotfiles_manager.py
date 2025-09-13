@@ -1296,9 +1296,9 @@ temp/
 
             console.print(f"[{LIME_PRIMARY}]  ✅ Configurazione di base completata[/]")
             
-            # Passo 4: Aggiungere remote (se configurato)
+            # Passo 5: Aggiungere remote (se configurato)
             if remote_url:
-                console.print(f"[{LIME_ACCENT}]🌐 Passo 4/5: Configurazione remote...[/]")
+                console.print(f"[{LIME_ACCENT}]🌐 Passo 5/6: Configurazione remote...[/]")
                 try:
                     subprocess.run(
                         ['git', '--git-dir', git_dir, 'remote', 'add', 'origin', remote_url],
@@ -1308,10 +1308,10 @@ temp/
                 except subprocess.CalledProcessError:
                     console.print(f"[yellow]  ⚠️  Errore nell'aggiungere il remote (potrebbe già esistere)[/yellow]")
             else:
-                console.print(f"[{LIME_ACCENT}]🌐 Passo 4/5: Nessun remote configurato - saltato[/]")
+                console.print(f"[{LIME_ACCENT}]🌐 Passo 5/6: Nessun remote configurato - saltato[/]")
 
-            # Passo 5: Finalizzazione
-            console.print(f"[{LIME_ACCENT}]🎯 Passo 5/5: Finalizzazione...[/]")
+            # Passo 6: Finalizzazione
+            console.print(f"[{LIME_ACCENT}]🎯 Passo 6/6: Finalizzazione...[/]")
             console.print(f"[{LIME_PRIMARY}]  ✅ Tutte le configurazioni applicate[/]")
             console.print(f"[{LIME_PRIMARY}]  ✅ Repository pronto per l'uso[/]")
 
