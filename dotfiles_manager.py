@@ -1268,7 +1268,7 @@ temp/
 
             # Passo 2: Inizializzazione repository bare
             console.print(f"[{LIME_ACCENT}]🔧 Passo 2/6: Creazione repository bare...[/]")
-            result = subprocess.run([
+            subprocess.run([
                 'git', 'init', '--bare', git_dir
             ], capture_output=True, text=True, check=True)
 
