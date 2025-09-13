@@ -1118,6 +1118,7 @@ temp/
                 Text(""),
                 Text("✅ Creerà un bare repository in Git Directory", style="white"),
                 Text("✅ Configurerà il work tree per i dotfiles", style="white"),
+                Text("✅ Creerà .gitignore in ~/.config/dotfiles-manager/", style="white"),
                 Text("✅ Aggiungerà il remote se configurato", style="white"),
                 Text("✅ Creerà comandi per gestire i dotfiles", style="white"),
                 Text("✅ Configurerà le impostazioni ottimali", style="white")
@@ -1257,7 +1258,7 @@ temp/
         
         try:
             # Passo 1: Creazione directory
-            console.print(f"[{LIME_ACCENT}]📁 Passo 1/5: Preparazione directory...[/]")
+            console.print(f"[{LIME_ACCENT}]📁 Passo 1/6: Preparazione directory...[/]")
             git_dir_parent = os.path.dirname(git_dir)
             if not os.path.exists(git_dir_parent):
                 os.makedirs(git_dir_parent)
@@ -1266,7 +1267,7 @@ temp/
                 console.print(f"[{LIME_PRIMARY}]  ✅ Directory parent già esistente[/]")
 
             # Passo 2: Inizializzazione repository bare
-            console.print(f"[{LIME_ACCENT}]🔧 Passo 2/5: Creazione repository bare...[/]")
+            console.print(f"[{LIME_ACCENT}]🔧 Passo 2/6: Creazione repository bare...[/]")
             result = subprocess.run([
                 'git', 'init', '--bare', git_dir
             ], capture_output=True, text=True, check=True)
