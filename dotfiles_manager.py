@@ -74,13 +74,25 @@ def get_key():
             try:
                 tty.setraw(sys.stdin.fileno())
                 key = sys.stdin.read(1)
-                if key == KeyCodes.ESC:  # Check if it's an escape sequence or standalone ESC
-                    # Use select to check if more data is available without blocking
-                    import select
-                    if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-                        # More data available - it's an escape sequence
-                        key += sys.stdin.read(2)
-                    # If no more data, it's a standalone ESC key
+
+                # Handle ESC sequences - simple approach
+                if key == KeyCodes.ESC:  # ESC sequences (arrows, function keys, etc.)
+                    # Always read 2 more characters for sequences like ESC[A
+                    try:
+                        additional = sys.stdin.read(2)
+                        full_sequence = key + additional
+                        # Check if this is a valid arrow key sequence
+                        if full_sequence in [KeyCodes.ARROW_UP, KeyCodes.ARROW_DOWN,
+                                           KeyCodes.ARROW_LEFT, KeyCodes.ARROW_RIGHT]:
+                            return full_sequence
+                        # If it's not a recognized sequence, check if we got nothing (standalone ESC)
+                        if len(additional) == 0:
+                            return KeyCodes.ESC  # Standalone ESC
+                        # Otherwise return the full sequence anyway
+                        return full_sequence
+                    except:
+                        return KeyCodes.ESC  # Standalone ESC on error
+
                 return key
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -93,15 +105,43 @@ def wait_for_key():
     key = get_key()
     return key not in [KeyCodes.ESC, 'q', 'Q']
 
+def show_popup_notification(message, duration=1.0, style="green"):
+    """Show a centered popup notification for a specified duration"""
+    import time
+
+    # Clear screen and get terminal size
+    console.clear()
+    terminal_size = console.size
+
+    # Create centered popup panel
+    popup_panel = Panel(
+        Align.center(Text(message, style=f"bold {style}")),
+        title="📢 NOTIFICA",
+        title_align="center",
+        border_style=style,
+        padding=(1, 2)
+    )
+
+    # Print some empty lines to center vertically
+    vertical_padding = max(0, (terminal_size.height // 2) - 5)
+    for _ in range(vertical_padding):
+        console.print("")
+
+    # Show the popup
+    console.print(popup_panel)
+
+    # Wait for the specified duration
+    time.sleep(duration)
+
 def get_confirmation(prompt, default='n'):
     """Get s/n confirmation with ESC support"""
     while True:
-        console.print(f"[yellow]{prompt} (s/n/ESC): [/]", end="")
+        console.print(f"[yellow]{prompt} (s/n): [/]", end="")
         key = get_key()
         console.print(key)  # Echo the key
 
         if key == KeyCodes.ESC or key.lower() == 'q':
-            return False  # ESC or Q cancels
+            return False  # ESC or Q cancels (ma non mostrato nel prompt)
         elif key.lower() == 's':
             return True
         elif key.lower() == 'n':
@@ -232,10 +272,10 @@ class DotfilesManager:
         """Handle menu navigation with simple clear/print approach"""
         while True:
             self.display_menu()
-            
+
             try:
                 key = get_key()
-                
+
                 # Handle arrow keys
                 if key == KeyCodes.ARROW_UP:
                     # Navigate up in menu (Arrow Up key)
@@ -884,10 +924,7 @@ class DotfilesManager:
                         # Save all changes
                         self.config = temp_config.copy()
                         if self.save_config():
-                            console.clear()
-                            console.print(f"[{LIME_PRIMARY}]✓ Tutte le configurazioni salvate con successo![/]")
-                            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
-                            wait_for_key()
+                            show_popup_notification("✓ Configurazioni salvate con successo!", 1.5, LIME_PRIMARY)
                         return
 
                     elif key == 'r':
@@ -927,9 +964,7 @@ class DotfilesManager:
 
                         if get_confirmation("Vuoi resettare questo campo al valore di default?"):
                             temp_config[field['key']] = default_value
-                            console.print(f"[{LIME_PRIMARY}]✓ Campo '{field['label']}' resettato al default![/]")
-                            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
-                            wait_for_key()
+                            show_popup_notification(f"✓ Campo '{field['label']}' resettato!", 1.5, LIME_PRIMARY)
 
                     elif key == KeyCodes.ARROW_UP:
                         # Move up in form (Arrow Up key)
@@ -962,106 +997,281 @@ class DotfilesManager:
         
         console.print(Panel(
             Group(
-                Text("🚀 INIZIALIZZA REPOSITORY GIT BARE", style=f"bold {LIME_PRIMARY}"),
+                Align.center(Text("✨ INIZIALIZZAZIONE REPOSITORY DOTFILES ✨", style=f"bold {LIME_PRIMARY}")),
                 Text(""),
-                Text("Configurazione attuale:", style=f"bold {LIME_SECONDARY}"),
-                Text(f"  Git Directory: {git_dir}", style="white"),
-                Text(f"  Work Tree:     {work_tree}", style="white"),
-                Text(f"  Remote URL:    {remote_url if remote_url else 'Non configurato'}", style="white"),
+                Align.center(Text("🎯 Configurazione Attuale", style=f"bold {LIME_ACCENT}")),
                 Text(""),
-                Text("Questa operazione:", style=f"bold {LIME_ACCENT}"),
-                Text("• Creerà un bare repository in Git Directory", style="white"),
-                Text("• Configurerà il work tree", style="white"),
-                Text("• Aggiungerà il remote se configurato", style="white"),
-                Text("• Creerà un alias 'dotfiles' per gestire i file", style="white")
+                Text(f"📁 Git Directory: {git_dir}", style=f"{LIME_SECONDARY}"),
+                Text(f"🌳 Work Tree:     {work_tree}", style=f"{LIME_SECONDARY}"),
+                Text(f"🌐 Remote URL:    {remote_url if remote_url else '❌ Non configurato'}", style=f"{LIME_SECONDARY}"),
+                Text(""),
+                Align.center(Text("🚀 Operazioni da Eseguire", style=f"bold {LIME_ACCENT}")),
+                Text(""),
+                Text("✅ Creerà un bare repository in Git Directory", style="white"),
+                Text("✅ Configurerà il work tree per i dotfiles", style="white"),
+                Text("✅ Aggiungerà il remote se configurato", style="white"),
+                Text("✅ Creerà comandi per gestire i dotfiles", style="white"),
+                Text("✅ Configurerà le impostazioni ottimali", style="white")
             ),
-            title="Repository Initialization",
-            border_style=LIME_ACCENT
+            title="🎨 REPOSITORY INITIALIZATION",
+            title_align="center",
+            border_style=LIME_PRIMARY,
+            padding=(1, 2)
         ))
         
+        # Flag per tracciare se abbiamo appena eliminato il repository
+        repository_just_deleted = False
+
         # Check if git directory already exists
         if os.path.exists(git_dir):
-            console.print(f"[yellow]⚠️  Il directory {git_dir} esiste già![/yellow]")
-            if not get_confirmation("Continuare comunque?"):
+            console.print()
+            console.print(Panel(
+                Group(
+                    Align.center(Text("🚨 REPOSITORY ESISTENTE RILEVATO", style="bold red")),
+                    Text(""),
+                    Align.center(Text(f"📁 {git_dir}", style="bold yellow")),
+                    Align.center(Text("esiste già e contiene dati!", style="yellow")),
+                    Text(""),
+                    Align.center(Text("⚠️  OPERAZIONE DISTRUTTIVA ⚠️", style="bold red")),
+                    Text(""),
+                    Text("Scegli come procedere:", style=f"bold {LIME_PRIMARY}"),
+                    Text(""),
+                    Text("🔥 [s] SOSTITUISCI", style="bold red"),
+                    Text("   └─ Elimina completamente il repository esistente", style="red"),
+                    Text("   └─ Crea un nuovo repository vuoto", style="red"),
+                    Text("   └─ TUTTI I DATI ESISTENTI ANDRANNO PERSI!", style="bold red"),
+                    Text(""),
+                    Text("🛡️  [n] ANNULLA", style="bold green"),
+                    Text("   └─ Mantieni il repository esistente", style="green"),
+                    Text("   └─ Nessuna modifica verrà effettuata", style="green"),
+                    Text("   └─ Opzione sicura - nessun dato perso", style="green"),
+                    Text(""),
+                    Align.center(Text("⚠️  LA SOSTITUZIONE È IRREVERSIBILE! ⚠️", style="bold red"))
+                ),
+                title="💥 ATTENZIONE - DATI ESISTENTI",
+                title_align="center",
+                border_style="red",
+                padding=(1, 2)
+            ))
+
+            console.print()
+            console.print("🎯 Scelta (s/n): ", end="")
+            choice = get_key()
+            console.print(f"[bold]{choice}[/bold]")
+
+            if choice.lower() == 's':
+                # Conferma finale per l'eliminazione con interfaccia più bella
+                console.print()
+                console.print(Panel(
+                    Group(
+                        Align.center(Text("💀 CONFERMA ELIMINAZIONE DEFINITIVA 💀", style="bold red")),
+                        Text(""),
+                        Align.center(Text("Stai per ELIMINARE DEFINITIVAMENTE:", style="red")),
+                        Align.center(Text(f"📁 {git_dir}", style="bold yellow")),
+                        Text(""),
+                        Text("🔥 Questa azione comporta:", style="bold red"),
+                        Text("   • Cancellazione COMPLETA del repository", style="red"),
+                        Text("   • Perdita di TUTTA la cronologia git", style="red"),
+                        Text("   • Eliminazione di TUTTI i commit", style="red"),
+                        Text("   • Rimozione di TUTTE le configurazioni", style="red"),
+                        Text("   • NESSUN modo per recuperare i dati", style="red"),
+                        Text(""),
+                        Align.center(Text("⚠️  OPERAZIONE IRREVERSIBILE ⚠️", style="bold red")),
+                        Text(""),
+                        Align.center(Text("Sei ASSOLUTAMENTE SICURO di voler procedere?", style="bold red"))
+                    ),
+                    title="🚨 ULTIMA POSSIBILITÀ DI FERMARTI",
+                    title_align="center",
+                    border_style="red",
+                    padding=(1, 2)
+                ))
+
+                console.print()
+                if not get_confirmation("CONFERMA: Elimina definitivamente tutti i dati?"):
+                    show_popup_notification("✅ Operazione annullata - Repository preservato!", 1.0, LIME_PRIMARY)
+                    return
+
+                # Eliminazione con feedback visivo
+                console.print()
+                console.print(f"[red]💥 Eliminazione repository in corso...[/red]")
+                try:
+                    import shutil
+                    shutil.rmtree(git_dir)
+                    console.print(f"[red]🗑️  Repository esistente eliminato: {git_dir}[/red]")
+                    console.print(f"[{LIME_PRIMARY}]✅ Proceeding direttamente alla creazione del nuovo repository![/]")
+                    # Segna che abbiamo eliminato il repository - salteremo la conferma
+                    repository_just_deleted = True
+                except Exception as e:
+                    show_popup_notification(f"❌ Errore eliminazione: {e}", 2.0, "red")
+                    return
+
+            else:
+                # 'n' o ESC o qualsiasi altro tasto
+                show_popup_notification("✅ Operazione annullata - Repository preservato!", 1.0, LIME_PRIMARY)
                 return
         
-        # Confirm initialization
+        # Conferma finale per inizializzazione (solo se non abbiamo appena eliminato il repository)
+        if not repository_just_deleted:
+            console.print()
+            console.print(Panel(
+                Group(
+                    Align.center(Text("🎯 PRONTO PER L'INIZIALIZZAZIONE", style=f"bold {LIME_PRIMARY}")),
+                    Text(""),
+                    Text("Il sistema creerà un nuovo repository bare per gestire i tuoi dotfiles.", style=f"{LIME_SECONDARY}"),
+                    Text("Tutti i passaggi saranno eseguiti automaticamente e in sicurezza.", style=f"{LIME_SECONDARY}"),
+                    Text(""),
+                    Align.center(Text("Vuoi procedere con l'inizializzazione?", style=f"bold {LIME_ACCENT}"))
+                ),
+                title="🚀 CONFERMA INIZIALIZZAZIONE",
+                title_align="center",
+                border_style=LIME_ACCENT,
+                padding=(1, 2)
+            ))
+
+            console.print()
+            if not get_confirmation("Inizializza il repository dotfiles?"):
+                show_popup_notification("✅ Inizializzazione annullata", 1.0, LIME_PRIMARY)
+                return
+
+        # Inizializzazione con stile e progresso
         console.print()
-        if not get_confirmation("Procedere con l'inizializzazione?"):
-            console.print(f"[{LIME_SECONDARY}]Operazione annullata.[/]")
-            console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
-            wait_for_key()
-            return
-        
-        console.print()
-        console.print(f"[{LIME_PRIMARY}]🔄 Inizializzazione del repository...[/]")
+        if repository_just_deleted:
+            console.print(Panel(
+                Align.center(Text("🚀 CREAZIONE NUOVO REPOSITORY...", style=f"bold {LIME_PRIMARY}")),
+                border_style=LIME_PRIMARY
+            ))
+        else:
+            console.print(Panel(
+                Align.center(Text("🚀 INIZIALIZZAZIONE IN CORSO...", style=f"bold {LIME_PRIMARY}")),
+                border_style=LIME_PRIMARY
+            ))
         
         try:
-            # Create git directory parent if it doesn't exist
+            # Passo 1: Creazione directory
+            console.print(f"[{LIME_ACCENT}]📁 Passo 1/5: Preparazione directory...[/]")
             git_dir_parent = os.path.dirname(git_dir)
             if not os.path.exists(git_dir_parent):
                 os.makedirs(git_dir_parent)
-                console.print(f"[{LIME_SECONDARY}]✓ Creato directory parent: {git_dir_parent}[/]")
-            
-            # Initialize bare repository
+                console.print(f"[{LIME_PRIMARY}]  ✅ Creato directory parent: {git_dir_parent}[/]")
+            else:
+                console.print(f"[{LIME_PRIMARY}]  ✅ Directory parent già esistente[/]")
+
+            # Passo 2: Inizializzazione repository bare
+            console.print(f"[{LIME_ACCENT}]🔧 Passo 2/5: Creazione repository bare...[/]")
             result = subprocess.run([
                 'git', 'init', '--bare', git_dir
             ], capture_output=True, text=True, check=True)
+
+            console.print(f"[{LIME_PRIMARY}]  ✅ Repository bare creato: {git_dir}[/]")
             
-            console.print(f"[{LIME_PRIMARY}]✓ Repository bare inizializzato in: {git_dir}[/]")
-            
+            # Passo 3: Configurazione repository
+            console.print(f"[{LIME_ACCENT}]⚙️  Passo 3/5: Configurazione repository...[/]")
+
             # Create git alias command for easier management
             alias_command = f'git --git-dir="{git_dir}" --work-tree="{work_tree}"'
-            
+
             # Set up initial configuration for bare repository
             config_commands = [
-                ['git', '--git-dir', git_dir, 'config', 'status.showUntrackedFiles', 'no'],
-                ['git', '--git-dir', git_dir, 'config', 'core.worktree', work_tree]
+                (['git', '--git-dir', git_dir, 'config', 'status.showUntrackedFiles', 'no'], "Nascondere file non tracciati"),
+                (['git', '--git-dir', git_dir, 'config', 'core.worktree', work_tree], "Configurare work tree")
             ]
 
-            for cmd in config_commands:
+            for cmd, description in config_commands:
                 subprocess.run(cmd, check=True, capture_output=True)
+                console.print(f"[{LIME_PRIMARY}]  ✅ {description}[/]")
+
+            console.print(f"[{LIME_PRIMARY}]  ✅ Configurazione di base completata[/]")
             
-            console.print(f"[{LIME_PRIMARY}]✓ Configurazione di base completata[/]")
-            
-            # Add remote if configured
+            # Passo 4: Aggiungere remote (se configurato)
             if remote_url:
+                console.print(f"[{LIME_ACCENT}]🌐 Passo 4/5: Configurazione remote...[/]")
                 try:
                     subprocess.run(
                         ['git', '--git-dir', git_dir, 'remote', 'add', 'origin', remote_url],
                         check=True, capture_output=True
                     )
-                    console.print(f"[{LIME_PRIMARY}]✓ Remote 'origin' aggiunto: {remote_url}[/]")
+                    console.print(f"[{LIME_PRIMARY}]  ✅ Remote 'origin' aggiunto: {remote_url}[/]")
                 except subprocess.CalledProcessError:
-                    console.print(f"[yellow]⚠️  Errore nell'aggiungere il remote (potrebbe già esistere)[/yellow]")
-            
+                    console.print(f"[yellow]  ⚠️  Errore nell'aggiungere il remote (potrebbe già esistere)[/yellow]")
+            else:
+                console.print(f"[{LIME_ACCENT}]🌐 Passo 4/5: Nessun remote configurato - saltato[/]")
+
+            # Passo 5: Finalizzazione
+            console.print(f"[{LIME_ACCENT}]🎯 Passo 5/5: Finalizzazione...[/]")
+            console.print(f"[{LIME_PRIMARY}]  ✅ Tutte le configurazioni applicate[/]")
+            console.print(f"[{LIME_PRIMARY}]  ✅ Repository pronto per l'uso[/]")
+
             console.print()
-            console.print(f"[{LIME_ACCENT}]🎉 Repository inizializzato con successo![/]")
-            console.print()
-            console.print(f"[{LIME_SECONDARY}]Per gestire i dotfiles, usa il comando:[/]")
-            console.print(f"[white]  {alias_command} <git-command>[/]")
-            console.print()
-            console.print(f"[{LIME_SECONDARY}]Esempio per aggiungere un file:[/]")
-            console.print(f"[white]  {alias_command} add ~/.bashrc[/]")
-            console.print(f"[white]  {alias_command} commit -m \"Add bashrc\"[/]")
-            
-            if remote_url:
-                console.print(f"[white]  {alias_command} push origin main[/]")
-            
-            console.print()
-            console.print(f"[{LIME_SECONDARY}]Suggerimento: Crea un alias nel tuo shell:[/]")
-            console.print(f"[white]  alias dotfiles='{alias_command}'[/]")
+            console.print(Panel(
+                Group(
+                    Align.center(Text("🎉 INIZIALIZZAZIONE COMPLETATA CON SUCCESSO! 🎉", style=f"bold {LIME_PRIMARY}")),
+                    Text(""),
+                    Text("🚀 Il tuo repository dotfiles è ora configurato e pronto per l'uso!", style=f"{LIME_SECONDARY}"),
+                    Text(""),
+                    Text("📋 Comandi utili:", style=f"bold {LIME_ACCENT}"),
+                    Text(f"   {alias_command} add <file>", style="white"),
+                    Text(f"   {alias_command} commit -m \"message\"", style="white"),
+                    Text(f"   {alias_command} status", style="white"),
+                    Text(f"   {alias_command} log --oneline", style="white"),
+                    "" if not remote_url else Text(f"   {alias_command} push origin main", style="white"),
+                    Text(""),
+                    Text("💡 Suggerimento:", style=f"bold {LIME_ACCENT}"),
+                    Text("   Crea un alias per semplificare i comandi:", style=f"{LIME_SECONDARY}"),
+                    Text(f"   alias dotfiles='{alias_command}'", style="white"),
+                    Text(""),
+                    Align.center(Text("Ora puoi iniziare a gestire i tuoi dotfiles! 🌿", style=f"bold {LIME_PRIMARY}"))
+                ),
+                title="✨ REPOSITORY DOTFILES INIZIALIZZATO",
+                title_align="center",
+                border_style=LIME_PRIMARY,
+                padding=(1, 2)
+            ))
             
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]❌ Errore nell'inizializzazione del repository:[/red]")
-            console.print(f"[red]   {e.stderr.strip() if e.stderr else str(e)}[/red]")
-            
+            console.print()
+            console.print(Panel(
+                Group(
+                    Align.center(Text("❌ ERRORE DURANTE L'INIZIALIZZAZIONE", style="bold red")),
+                    Text(""),
+                    Text("Si è verificato un errore durante la creazione del repository:", style="red"),
+                    Text(f"   {e.stderr.strip() if e.stderr else str(e)}", style="yellow"),
+                    Text(""),
+                    Text("Possibili cause:", style="red"),
+                    Text("• Permessi insufficienti nella directory", style="white"),
+                    Text("• Git non installato o non accessibile", style="white"),
+                    Text("• Directory non scrivibile", style="white"),
+                    Text(""),
+                    Text("Verifica la configurazione e riprova.", style=f"{LIME_SECONDARY}")
+                ),
+                title="🚨 ERRORE INIZIALIZZAZIONE",
+                title_align="center",
+                border_style="red",
+                padding=(1, 2)
+            ))
+
         except Exception as e:
-            console.print(f"[red]❌ Errore imprevisto: {str(e)}[/red]")
-        
+            console.print()
+            console.print(Panel(
+                Group(
+                    Align.center(Text("💥 ERRORE IMPREVISTO", style="bold red")),
+                    Text(""),
+                    Text("Si è verificato un errore imprevisto:", style="red"),
+                    Text(f"   {str(e)}", style="yellow"),
+                    Text(""),
+                    Text("Si prega di verificare:", style="red"),
+                    Text("• La configurazione delle directory", style="white"),
+                    Text("• I permessi del filesystem", style="white"),
+                    Text("• L'installazione di Git", style="white")
+                ),
+                title="💀 ERRORE CRITICO",
+                title_align="center",
+                border_style="red",
+                padding=(1, 2)
+            ))
+
         console.print()
-        console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare (ESC per uscire)...[/]")
-        wait_for_key()
+        console.print(f"[{LIME_SECONDARY}]Premi un tasto per continuare...[/]")
+        get_key()  # Semplice - qualsiasi tasto continua
 
     def restore_files(self):
         """Menu option 4: Restore files"""
