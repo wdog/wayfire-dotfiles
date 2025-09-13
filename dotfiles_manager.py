@@ -626,99 +626,125 @@ class DotfilesManager:
         
         return target_path
     
-    def copy_items_to_dotfiles(self, selected_paths):
-        """Copy selected files and directories to dotfiles directory, then add to git"""
+    def add_items_to_dotfiles_repo(self, selected_paths):
+        """Add selected files and directories directly to bare git repository"""
         if not selected_paths:
             console.print(f"[{LIME_SECONDARY}]No items selected.[/]")
             return
-        
-        current_dir = os.getcwd()
-        
+
+        # Get git settings
+        git_dir = os.path.expanduser(self.config.get('git_dir', '~/.dotfiles.git'))
+        work_tree = os.path.expanduser(self.config.get('work_tree', '~'))
+
+        # Check if git repository exists
+        if not os.path.exists(git_dir):
+            console.print(Panel(
+                Group(
+                    Align.center(Text("❌ REPOSITORY NON INIZIALIZZATO", style="bold red")),
+                    Text(""),
+                    Text("Il repository dotfiles non è stato ancora inizializzato.", style="red"),
+                    Text("Vai nelle impostazioni e inizializza il repository prima di aggiungere file.", style="red")
+                ),
+                title="🚨 ERRORE",
+                title_align="center",
+                border_style="red",
+                padding=(1, 2)
+            ))
+            console.print(f"\n[{LIME_SECONDARY}]Press any key to continue...[/]")
+            get_key()
+            return
+
         # Expand directories to include all their files
         all_files_to_process = []
-        
+
         for path in selected_paths:
-            if os.path.isfile(path):
-                all_files_to_process.append(path)
-            elif os.path.isdir(path):
-                # Get all matching files in the directory recursively
-                dir_files = self.get_files_in_directory_recursive(path)
-                all_files_to_process.extend(dir_files)
-                console.print(f"[{LIME_SECONDARY}]📂 Directory {path.replace(os.path.expanduser('~'), '~')} contains {len(dir_files)} files[/]")
-        
+            abs_path = os.path.abspath(path)
+            if os.path.isfile(abs_path):
+                all_files_to_process.append(abs_path)
+            elif os.path.isdir(abs_path):
+                # Get all files in the directory recursively
+                for root, dirs, files in os.walk(abs_path):
+                    for file in files:
+                        all_files_to_process.append(os.path.join(root, file))
+                console.print(f"[{LIME_SECONDARY}]📂 Directory {path.replace(work_tree, '~')} expanded[/]")
+
         # Remove duplicates
         all_files_to_process = list(set(all_files_to_process))
-        
+
         console.print(Panel(
-            Text(f"Copying {len(all_files_to_process)} files to dotfiles directory and adding to git...", style=LIME_PRIMARY),
-            title="Copying and Adding Files",
+            Text(f"Adding {len(all_files_to_process)} files directly to bare git repository...", style=LIME_PRIMARY),
+            title="🔗 Git Add Operation",
             border_style=LIME_ACCENT
         ))
-        
-        copied_files = []
+
+        added_files = []
         skipped_files = []
         failed_files = []
-        
-        for source_path in all_files_to_process:
+
+        for file_path in all_files_to_process:
             try:
-                # Check if file is already in dotfiles directory
-                if os.path.dirname(os.path.abspath(source_path)) == current_dir:
-                    # File is already in dotfiles directory
-                    if self.is_protected_file(source_path):
-                        skipped_files.append((source_path, "protected file"))
-                        console.print(f"[yellow]⚠️[/yellow] {source_path.replace(os.path.expanduser('~'), '~')} (protected)")
-                        continue
-                    else:
-                        # Add directly to git
-                        result = subprocess.run(['git', 'add', source_path], 
-                                              capture_output=True, text=True, check=True)
-                        copied_files.append(source_path)
-                        console.print(f"[{LIME_PRIMARY}]✓[/] {source_path.replace(os.path.expanduser('~'), '~')} (already in dotfiles)")
-                        continue
-                
-                # Calculate target path
-                target_path = self.copy_file_to_dotfiles(source_path, current_dir)
-                
-                # Check if target would overwrite protected files
-                if self.is_protected_file(target_path):
-                    skipped_files.append((source_path, "would overwrite protected file"))
-                    console.print(f"[yellow]⚠️[/yellow] {source_path.replace(os.path.expanduser('~'), '~')} (would overwrite protected file)")
+                # Check if file is protected
+                if self.is_protected_file(file_path):
+                    skipped_files.append((file_path, "protected file"))
+                    console.print(f"[yellow]⚠️[/yellow] {file_path.replace(work_tree, '~')} (protected)")
                     continue
-                
-                # Copy the file
-                shutil.copy2(source_path, target_path)
-                
-                # Add to git
-                result = subprocess.run(['git', 'add', target_path], 
-                                      capture_output=True, text=True, check=True)
-                
-                copied_files.append(target_path)
-                console.print(f"[{LIME_PRIMARY}]✓[/] {source_path.replace(os.path.expanduser('~'), '~')} → {os.path.relpath(target_path)}")
-                
+
+                # Check if file is within work_tree
+                if not file_path.startswith(work_tree):
+                    skipped_files.append((file_path, "outside work tree"))
+                    console.print(f"[yellow]⚠️[/yellow] {file_path.replace(work_tree, '~')} (outside work tree)")
+                    continue
+
+                # Add to git using bare repository commands
+                result = subprocess.run([
+                    'git', '--git-dir', git_dir, '--work-tree', work_tree,
+                    'add', file_path
+                ], capture_output=True, text=True, check=True)
+
+                added_files.append(file_path)
+                relative_path = os.path.relpath(file_path, work_tree)
+                console.print(f"[{LIME_PRIMARY}]✓[/] ~/{relative_path}")
+
             except subprocess.CalledProcessError as e:
-                failed_files.append((source_path, f"git error: {e.stderr.strip()}"))
-                console.print(f"[red]✗[/red] {source_path.replace(os.path.expanduser('~'), '~')} (git error)")
+                failed_files.append((file_path, f"git error: {e.stderr.strip() if e.stderr else 'unknown error'}"))
+                console.print(f"[red]✗[/red] {file_path.replace(work_tree, '~')} (git error)")
             except Exception as e:
-                failed_files.append((source_path, str(e)))
-                console.print(f"[red]✗[/red] {source_path.replace(os.path.expanduser('~'), '~')} (copy error)")
-        
+                failed_files.append((file_path, str(e)))
+                console.print(f"[red]✗[/red] {file_path.replace(work_tree, '~')} (error: {str(e)[:50]})")
+
         # Summary
-        console.print("\n" + "─" * 60)
-        console.print(f"[{LIME_PRIMARY}]Successfully copied and added: {len(copied_files)} files[/]")
-        if skipped_files:
-            console.print(f"[yellow]Skipped: {len(skipped_files)} files (protected)[/yellow]")
-        if failed_files:
-            console.print(f"[red]Failed: {len(failed_files)} files[/red]")
-            
-        console.print(f"\n[{LIME_SECONDARY}]Press any key to continue (ESC to cancel)...[/]")
-        wait_for_key()
-    
+        console.print()
+        console.print(Panel(
+            Group(
+                Align.center(Text("📊 OPERATION SUMMARY", style=f"bold {LIME_ACCENT}")),
+                Text(""),
+                Text(f"✅ Successfully added: {len(added_files)} files", style=f"bold {LIME_PRIMARY}") if added_files else Text(""),
+                Text(f"⚠️  Skipped: {len(skipped_files)} files", style="bold yellow") if skipped_files else Text(""),
+                Text(f"❌ Failed: {len(failed_files)} files", style="bold red") if failed_files else Text(""),
+                Text(""),
+                Text("💡 Next steps:", style=f"bold {LIME_ACCENT}") if added_files else Text(""),
+                Text(f"   git --git-dir={git_dir} --work-tree={work_tree} status", style="white") if added_files else Text(""),
+                Text(f"   git --git-dir={git_dir} --work-tree={work_tree} commit -m 'message'", style="white") if added_files else Text("")
+            ),
+            title="✨ GIT ADD COMPLETED",
+            title_align="center",
+            border_style=LIME_PRIMARY,
+            padding=(1, 2)
+        ))
+
+        console.print(f"\n[{LIME_SECONDARY}]Press any key to continue...[/]")
+        get_key()
+
+    def copy_items_to_dotfiles(self, selected_paths):
+        """Legacy function - redirects to new bare git add approach"""
+        return self.add_items_to_dotfiles_repo(selected_paths)
+
     def add_remove_files(self):
         """Menu option 2: Add/Remove files with file browser"""
         selected_items = self.file_browser()
-        
+
         if selected_items:
-            self.copy_items_to_dotfiles(selected_items)
+            self.add_items_to_dotfiles_repo(selected_items)
 
     def settings(self):
         """Menu option 3: Settings - Display settings submenu"""
