@@ -9,8 +9,6 @@ import sys
 import termios
 import tty
 import json
-import glob
-import fnmatch
 import subprocess
 import shutil
 from pathlib import Path
@@ -28,6 +26,37 @@ from rich.padding import Padding
 # Create console with lime theme
 console = Console()
 
+# Key codes constants for better readability
+class KeyCodes:
+    """Terminal key codes used throughout the application"""
+    # Control keys
+    ESC = '\x1b'         # Escape key
+    ENTER = '\r'         # Enter/Return key
+    CTRL_C = '\x03'      # Ctrl+C interrupt
+
+    # Backspace variations (different terminals)
+    BACKSPACE = '\x7f'   # DEL character (most common)
+    BACKSPACE_ALT = '\x08'  # BS character (some terminals)
+
+    # Arrow keys (ANSI escape sequences)
+    ARROW_UP = '\x1b[A'     # Up arrow
+    ARROW_DOWN = '\x1b[B'   # Down arrow
+    ARROW_RIGHT = '\x1b[C'  # Right arrow
+    ARROW_LEFT = '\x1b[D'   # Left arrow
+
+    # Function keys
+    F1 = '\x1bOP'        # F1 key
+    F2 = '\x1bOQ'        # F2 key
+    F3 = '\x1bOR'        # F3 key
+    F4 = '\x1bOS'        # F4 key
+
+    # Special keys
+    HOME = '\x1b[H'      # Home key
+    END = '\x1b[F'       # End key
+    PAGE_UP = '\x1b[5~'  # Page Up
+    PAGE_DOWN = '\x1b[6~' # Page Down
+    DELETE = '\x1b[3~'   # Delete key
+
 def get_key():
     """Cross-platform single key input function with fallback"""
     try:
@@ -38,21 +67,21 @@ def get_key():
             # Check if stdin is a terminal
             if not sys.stdin.isatty():
                 # Fallback to regular input for non-interactive environments
-                return input().strip() or '\r'
+                return input().strip() or KeyCodes.ENTER
 
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
                 tty.setraw(sys.stdin.fileno())
                 key = sys.stdin.read(1)
-                if key == '\x1b':  # Arrow keys start with escape
+                if key == KeyCodes.ESC:  # ANSI escape sequences (arrows, function keys, etc.)
                     key += sys.stdin.read(2)
                 return key
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except Exception:
         # Ultimate fallback to regular input
-        return input().strip() or '\r'
+        return input().strip() or KeyCodes.ENTER
 
 # Theme colors
 LIME_PRIMARY = "#32CD32"      # Lime green
@@ -75,34 +104,40 @@ class DotfilesManager:
         
     def load_config(self):
         """Load configuration from config.json"""
+        config_file = 'config.json'
+        default_config = {
+            'git_dir': '~/.dotfiles.git',
+            'work_tree': '~',
+            'remote': ''
+        }
+        
         try:
-            with open('config.json', 'r') as f:
+            with open(config_file, 'r') as f:
                 config = json.load(f)
-                return {
-                    'search_paths': config.get('include_paths', ['~/.config']),
-                    'file_patterns': config.get('include_extensions', ['*.ini', '*.conf', '*.json']),
-                    'exclude_patterns': config.get('exclude_paths', []) + config.get('exclude_extensions', []),
-                    'max_depth': 5,
-                    'show_hidden': True
-                }
+                # Merge with defaults for any missing keys
+                result = default_config.copy()
+                result.update(config)
+                return result
         except FileNotFoundError:
-            console.print("[red]Error: config.json not found[/red]")
-            return {
-                'search_paths': ['~/.config'],
-                'file_patterns': ['*.ini', '*.conf', '*.json'],
-                'exclude_patterns': ['*/cache/*', '*/.git/*'],
-                'max_depth': 5,
-                'show_hidden': True
-            }
+            # Create config file with defaults
+            self.save_config(default_config)
+            return default_config
         except json.JSONDecodeError:
             console.print("[red]Error: Invalid JSON in config.json[/red]")
-            return {
-                'search_paths': ['~/.config'],
-                'file_patterns': ['*.ini', '*.conf', '*.json'],
-                'exclude_patterns': ['*/cache/*', '*/.git/*'],
-                'max_depth': 5,
-                'show_hidden': True
-            }
+            return default_config
+
+    def save_config(self, config=None):
+        """Save configuration to config.json"""
+        if config is None:
+            config = self.config
+        
+        try:
+            with open('config.json', 'w') as f:
+                json.dump(config, f, indent=2)
+            return True
+        except Exception as e:
+            console.print(f"[red]Error saving config: {e}[/red]")
+            return False
 
     def display_header(self):
         """Display the beautiful header with lime theme"""
@@ -176,18 +211,22 @@ class DotfilesManager:
                 key = get_key()
                 
                 # Handle arrow keys
-                if key == '\x1b[A':  # Up arrow
+                if key == KeyCodes.ARROW_UP:
+                    # Navigate up in menu (Arrow Up key)
                     self.selected_option = (self.selected_option - 1) % 5
-                elif key == '\x1b[B':  # Down arrow
+                elif key == KeyCodes.ARROW_DOWN:
+                    # Navigate down in menu (Arrow Down key)
                     self.selected_option = (self.selected_option + 1) % 5
-                # Handle regular keys
-                elif key.lower() == 'w' or key.lower() == 'k':  # Up
+                # Handle regular keys (WASD/HJKL style navigation)
+                elif key.lower() == 'w' or key.lower() == 'k':  # Up (W/K keys)
                     self.selected_option = (self.selected_option - 1) % 5
-                elif key.lower() == 's' or key.lower() == 'j':  # Down
+                elif key.lower() == 's' or key.lower() == 'j':  # Down (S/J keys)
                     self.selected_option = (self.selected_option + 1) % 5
-                elif key == '\r' or key == '\n':  # Enter
+                elif key == KeyCodes.ENTER or key == '\n':
+                    # Select current menu option (Enter key)
                     return self.selected_option + 1
-                elif key.lower() == 'q' or key == '\x1b':  # Quit (q or Esc)
+                elif key.lower() == 'q' or key == KeyCodes.ESC:
+                    # Quit application (Q key or Escape)
                     return 5
                 elif key.isdigit() and 1 <= int(key) <= 5:  # Direct number selection
                     return int(key)
@@ -207,112 +246,30 @@ class DotfilesManager:
         console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press Enter to continue...[/]")
         input()
 
-    def is_path_allowed(self, path):
-        """Check if a path is within allowed search paths"""
-        expanded_path = os.path.abspath(path)
-        search_paths = [os.path.abspath(os.path.expanduser(p)) for p in self.config.get('search_paths', ['~'])]
-        
-        # Allow if path is within any search path or is a parent of search paths
-        for search_path in search_paths:
-            if expanded_path == search_path or expanded_path.startswith(search_path + os.sep):
-                return True
-            # Also allow parent directories that lead to search paths
-            if search_path.startswith(expanded_path + os.sep):
-                return True
-        
-        return False
-    
-    def should_exclude_item(self, item_path, item_name):
-        """Check if an item should be excluded based on patterns"""
-        exclude_patterns = self.config.get('exclude_patterns', [])
-        
-        # Check against full path
-        for pattern in exclude_patterns:
-            if fnmatch.fnmatch(item_path, pattern) or fnmatch.fnmatch(item_name, pattern):
-                return True
-            # Also check relative patterns
-            if pattern.startswith('*/'):
-                if fnmatch.fnmatch(os.path.basename(item_path), pattern[2:]):
-                    return True
-        
-        return False
-    
-    def should_show_directory(self, dir_path):
-        """Check if a directory should be shown (contains allowed content or leads to search paths)"""
-        expanded_path = os.path.abspath(dir_path)
-        search_paths = [os.path.abspath(os.path.expanduser(p)) for p in self.config.get('search_paths', ['~'])]
-        
-        # Show if directory is a search path or within one
-        for search_path in search_paths:
-            if expanded_path == search_path or expanded_path.startswith(search_path + os.sep):
-                return True
-            # Show if directory is on the path to a search path
-            if search_path.startswith(expanded_path + os.sep):
-                return True
-        
-        return False
-    
-    def should_show_file(self, file_path, file_name):
-        """Check if a file should be shown based on patterns and location"""
-        # Must be in allowed path
-        if not self.is_path_allowed(file_path):
-            return False
-        
-        # Must match file patterns
-        file_patterns = self.config.get('file_patterns', ['*'])
-        if not any(fnmatch.fnmatch(file_name, pattern) for pattern in file_patterns):
-            return False
-        
-        return True
-    
     def get_directory_contents(self, directory):
-        """Get files and directories in the current directory, filtered by config"""
+        """Get files and directories in the current directory"""
         items = []
-        
+
         try:
             # Add parent directory option (except for root and home)
             parent_dir = os.path.dirname(directory)
             if directory != '/' and parent_dir != directory:
                 items.append({'path': '..', 'type': 'parent', 'full_path': parent_dir})
-            
+
             # Get all items in current directory
             for item_name in sorted(os.listdir(directory)):
                 item_path = os.path.join(directory, item_name)
-                
-                # Skip hidden files unless configured to show them
-                if item_name.startswith('.') and not self.config.get('show_hidden', True):
-                    continue
-                
-                # Skip if matches exclude patterns
-                if self.should_exclude_item(item_path, item_name):
-                    continue
-                
+
                 if os.path.isdir(item_path):
-                    # Show directory if it should be shown (contains relevant content or on path to search paths)
-                    if self.should_show_directory(item_path):
-                        items.append({'path': item_name, 'type': 'directory', 'full_path': item_path})
+                    items.append({'path': item_name, 'type': 'directory', 'full_path': item_path})
                 elif os.path.isfile(item_path):
-                    # Show file if it matches patterns and is in allowed location
-                    if self.should_show_file(item_path, item_name):
-                        items.append({'path': item_name, 'type': 'file', 'full_path': item_path})
-            
+                    items.append({'path': item_name, 'type': 'file', 'full_path': item_path})
+
         except PermissionError:
             console.print(f"[red]Permission denied accessing {directory}[/red]")
-            
+
         return items
     
-    def get_files_in_directory_recursive(self, directory):
-        """Get all files in a directory recursively that match our patterns"""
-        files_in_dir = []
-        
-        for pattern in self.config.get('file_patterns', []):
-            for file_path in glob.glob(os.path.join(directory, '**', pattern), recursive=True):
-                # Skip if matches exclude patterns
-                if any(fnmatch.fnmatch(file_path, exclude) for exclude in self.config.get('exclude_patterns', [])):
-                    continue
-                files_in_dir.append(file_path)
-                
-        return files_in_dir
     
     def file_browser(self):
         """Interactive file browser with multi-column layout, scrolling, and search"""
@@ -486,24 +443,29 @@ class DotfilesManager:
             
             if search_mode:
                 # Search mode input handling
-                if key == '\r' or key == '\n':  # Enter - confirm search
+                if key == KeyCodes.ENTER or key == '\n':
+                    # Confirm search (Enter key)
                     search_mode = False
                     need_refresh = True
-                elif key == '\x1b':  # Escape - cancel search
+                elif key == KeyCodes.ESC:
+                    # Cancel search (Escape key)
                     search_mode = False
                     search_term = ""
                     need_refresh = True
-                elif key == '\x7f' or key == '\b':  # Backspace
+                elif key == KeyCodes.BACKSPACE or key == '\b':
+                    # Remove character from search (Backspace key)
                     if search_term:
                         search_term = search_term[:-1]
                         need_refresh = True
-                elif len(key) == 1 and key.isprintable():  # Regular character
+                elif len(key) == 1 and key.isprintable():
+                    # Add character to search term (printable characters)
                     search_term += key
                     current_selection = 0  # Reset selection when searching
                     need_refresh = True
             else:
                 # Normal navigation mode
-                if key == '\x1b[A' or key.lower() == 'k':  # Up
+                if key == KeyCodes.ARROW_UP or key.lower() == 'k':
+                    # Navigate up in grid (Arrow Up or K key)
                     if items:
                         if current_selection >= columns:
                             current_selection -= columns
@@ -513,7 +475,8 @@ class DotfilesManager:
                             col_in_current_row = current_selection % columns
                             current_selection = min(bottom_row_start + col_in_current_row, len(items) - 1)
                         need_refresh = True
-                elif key == '\x1b[B' or key.lower() == 'j':  # Down
+                elif key == KeyCodes.ARROW_DOWN or key.lower() == 'j':
+                    # Navigate down in grid (Arrow Down or J key)
                     if items:
                         if current_selection + columns < len(items):
                             current_selection += columns
@@ -522,15 +485,18 @@ class DotfilesManager:
                             col_in_current_row = current_selection % columns
                             current_selection = min(col_in_current_row, len(items) - 1)
                         need_refresh = True
-                elif key == '\x1b[D' or key.lower() == 'h':  # Left
+                elif key == KeyCodes.ARROW_LEFT or key.lower() == 'h':
+                    # Navigate left in grid (Arrow Left or H key)
                     if items:
                         current_selection = (current_selection - 1) % len(items)
                         need_refresh = True
-                elif key == '\x1b[C' or key.lower() == 'l':  # Right
+                elif key == KeyCodes.ARROW_RIGHT or key.lower() == 'l':
+                    # Navigate right in grid (Arrow Right or L key)
                     if items:
                         current_selection = (current_selection + 1) % len(items)
                         need_refresh = True
-                elif key == '\r' or key == '\n':  # Enter - navigate into directory
+                elif key == KeyCodes.ENTER or key == '\n':
+                    # Enter directory or select file (Enter key)
                     if items and current_selection < len(items):
                         current_item = items[current_selection]
                         if current_item['type'] == 'directory':
@@ -561,7 +527,8 @@ class DotfilesManager:
                     need_refresh = True
                 elif key == '\t':  # Tab - confirm selection and add to git
                     return list(selected_items)
-                elif key.lower() == 'q' or key == '\x1b':  # Quit
+                elif key.lower() == 'q' or key == KeyCodes.ESC:
+                    # Quit file browser (Q key or Escape)
                     return []
     
     def is_protected_file(self, file_path):
@@ -688,15 +655,384 @@ class DotfilesManager:
             self.copy_items_to_dotfiles(selected_items)
 
     def settings(self):
-        """Menu option 3: Settings"""
+        """Menu option 3: Settings - Display settings submenu"""
+        selected_option = 0
+        settings_options = [
+            ("1", "✏️  Modifica Settings", "Edit configuration settings"),
+            ("2", "🚀  Inizializza Repo Git", "Initialize bare git repository"),
+            ("3", "🔙  Torna al Menu", "Return to main menu")
+        ]
+        
+        while True:
+            console.clear()
+            
+            # Create menu content
+            menu_lines = []
+            for i, (num, title, desc) in enumerate(settings_options):
+                if i == selected_option:
+                    menu_lines.append(Text(f"        ► [{num}] {title}", style=f"bold {LIME_ACCENT}"))
+                else:
+                    menu_lines.append(Text(f"        · [{num}] {title}", style="dim white"))
+
+            # Create header
+            header = Text("Configure your dotfiles manager", style=LIME_SECONDARY, justify="center")
+            
+            # Create complete menu content
+            menu_content = Group(
+                header,
+                Text(""),
+                *menu_lines,
+                Text(""),
+                Text("↑↓/ws: navigate • Enter: select • 1-3: direct • q: back", style=LIME_SECONDARY, justify="center")
+            )
+            
+            # Display menu panel
+            menu_panel = Panel(
+                menu_content,
+                title="⚙️ SETTINGS",
+                title_align="center",
+                style="#F8FFF8",
+                border_style=LIME_PRIMARY,
+                box=box.ROUNDED,
+                padding=(1, 1)
+            )
+            
+            console.print(menu_panel)
+            
+            # Handle input
+            try:
+                key = get_key()
+                
+                # Handle arrow keys
+                if key == KeyCodes.ARROW_UP:
+                    # Navigate up in settings menu (Arrow Up key)
+                    selected_option = (selected_option - 1) % 3
+                elif key == KeyCodes.ARROW_DOWN:
+                    # Navigate down in settings menu (Arrow Down key)
+                    selected_option = (selected_option + 1) % 3
+                # Handle regular keys (WASD/HJKL style navigation)
+                elif key.lower() == 'w' or key.lower() == 'k':  # Up (W/K keys)
+                    selected_option = (selected_option - 1) % 3
+                elif key.lower() == 's' or key.lower() == 'j':  # Down (S/J keys)
+                    selected_option = (selected_option + 1) % 3
+                elif key == KeyCodes.ENTER or key == '\n':
+                    # Select current menu option (Enter key)
+                    choice = selected_option + 1
+                    break
+                elif key.lower() == 'q' or key == KeyCodes.ESC:
+                    # Go back to main menu (Q key or Escape)
+                    return
+                elif key.isdigit() and 1 <= int(key) <= 3:  # Direct number selection
+                    choice = int(key)
+                    break
+                    
+            except KeyboardInterrupt:
+                return
+        
+        # Handle menu choice
+        if choice == 1:
+            console.clear()
+            self.edit_settings()
+        elif choice == 2:
+            console.clear()
+            self.initialize_git_repo()
+        elif choice == 3:
+            return  # Back to main menu
+
+    def edit_settings(self):
+        """Edit all configuration settings in a compact form interface"""
+        console.clear()
+
+        # Create a copy of current config to edit
+        temp_config = self.config.copy()
+
+        # Form fields configuration
+        fields = [
+            {'key': 'git_dir', 'label': 'Git Directory', 'icon': '📁', 'placeholder': '~/.dotfiles.git'},
+            {'key': 'work_tree', 'label': 'Work Tree', 'icon': '🌳', 'placeholder': '~'},
+            {'key': 'remote', 'label': 'Remote URL', 'icon': '🌐', 'placeholder': 'https://github.com/user/dotfiles.git'}
+        ]
+
+        current_field = 0
+        editing_mode = False
+        edit_value = ""
+
+        while True:
+            console.clear()
+
+            # Build compact form content
+            form_content = []
+            form_content.append(Text("⚙️ CONFIGURAZIONE", style=f"bold {LIME_PRIMARY}"))
+            form_content.append(Text("↑↓: naviga  Enter: modifica  s: salva  r: reset campo  q: esci", style=f"{LIME_SECONDARY}"))
+            form_content.append(Text(""))
+
+            # Display all fields in compact form
+            for i, field in enumerate(fields):
+                value = temp_config.get(field['key'], '')
+                is_active = (i == current_field)
+                is_editing = (is_active and editing_mode)
+
+                # Determine display value
+                if is_editing:
+                    display_value = edit_value
+                    cursor = "█"  # Cursor block
+                else:
+                    display_value = value if value else f"({field['placeholder']})"
+                    cursor = ""
+
+                # Field styling
+                if is_active:
+                    if is_editing:
+                        # Field being edited - green background
+                        field_style = f"bold white on {LIME_ACCENT}"
+                        value_style = f"bold black on white"
+                        prefix = "✏️ "
+                    else:
+                        # Active field - highlighted
+                        field_style = f"bold {LIME_PRIMARY}"
+                        value_style = f"bold {LIME_PRIMARY}"
+                        prefix = "► "
+                else:
+                    # Inactive field - dimmed
+                    field_style = f"dim {LIME_SECONDARY}"
+                    value_style = "dim white"
+                    prefix = "  "
+
+                # Compact single-line display
+                line = f"{prefix}{field['icon']} {field['label']:<12}: {display_value}{cursor}"
+                form_content.append(Text(line, style=field_style if not is_editing else value_style))
+
+            form_content.append(Text(""))
+            form_content.append(Text("─────────────────────────────────────", style=LIME_SECONDARY))
+
+            # Status message
+            if editing_mode:
+                form_content.append(Text(f"✏️ Editing {fields[current_field]['label']} (Enter: conferma, Esc: annulla)", style=f"bold {LIME_ACCENT}"))
+            else:
+                form_content.append(Text("Controlli: ↑↓ naviga, Enter modifica, s salva tutto, r reset campo corrente", style="white"))
+
+            # Display compact panel
+            form_panel = Panel(
+                Group(*form_content),
+                title="📝 FORM SETTINGS",
+                title_align="center",
+                border_style=LIME_ACCENT if not editing_mode else LIME_PRIMARY,
+                padding=(1, 1)
+            )
+
+            console.print(form_panel)
+
+            # Handle input
+            try:
+                if editing_mode:
+                    # In editing mode - handle text input
+                    key = get_key()
+
+                    if key == KeyCodes.ESC:
+                        # Cancel editing (Escape key)
+                        editing_mode = False
+                        edit_value = ""
+
+                    elif key == KeyCodes.ENTER:
+                        # Confirm editing (Enter/Return key)
+                        temp_config[fields[current_field]['key']] = edit_value
+                        editing_mode = False
+                        edit_value = ""
+
+                    elif key == KeyCodes.BACKSPACE or key == KeyCodes.BACKSPACE_ALT:
+                        # Remove last character (Backspace/Delete key)
+                        edit_value = edit_value[:-1]
+
+                    elif len(key) == 1 and key.isprintable():
+                        # Add printable character
+                        edit_value += key
+
+                else:
+                    # In navigation mode
+                    key = get_key()
+
+                    if key == 'q':
+                        return  # Cancel and go back
+
+                    elif key == 's':
+                        # Save all changes
+                        self.config = temp_config.copy()
+                        if self.save_config():
+                            console.clear()
+                            console.print(f"[{LIME_PRIMARY}]✓ Tutte le configurazioni salvate con successo![/]")
+                            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+                        return
+
+                    elif key == 'r':
+                        # Reset current field to default
+                        field = fields[current_field]
+                        defaults = {
+                            'git_dir': '~/.dotfiles.git',
+                            'work_tree': '~',
+                            'remote': ''
+                        }
+                        default_value = defaults.get(field['key'], '')
+                        current_value = temp_config.get(field['key'], '')
+
+                        # Show elegant confirmation dialog
+                        console.clear()
+
+                        confirmation_content = []
+                        confirmation_content.append(Text("🔄 RESET CAMPO", style=f"bold {LIME_PRIMARY}"))
+                        confirmation_content.append(Text(""))
+                        confirmation_content.append(Text(f"Campo: {field['icon']} {field['label']}", style=f"bold {LIME_SECONDARY}"))
+                        confirmation_content.append(Text(f"Valore attuale: {current_value if current_value else '(vuoto)'}", style="white"))
+                        confirmation_content.append(Text(f"Valore default:  {default_value if default_value else '(vuoto)'}", style=f"{LIME_ACCENT}"))
+                        confirmation_content.append(Text(""))
+                        confirmation_content.append(Text("Vuoi resettare questo campo al valore di default?", style="yellow"))
+                        confirmation_content.append(Text(""))
+                        confirmation_content.append(Text("s = Conferma    n = Annulla", style=f"bold {LIME_SECONDARY}"))
+
+                        confirmation_panel = Panel(
+                            Group(*confirmation_content),
+                            title="⚠️  CONFERMA RESET",
+                            title_align="center",
+                            border_style="yellow",
+                            padding=(1, 1)
+                        )
+
+                        console.print(confirmation_panel)
+
+                        if console.input(f"[yellow]Scelta: [/]").strip().lower() == 's':
+                            temp_config[field['key']] = default_value
+                            console.print(f"[{LIME_PRIMARY}]✓ Campo '{field['label']}' resettato al default![/]")
+                            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+
+                    elif key == KeyCodes.ARROW_UP:
+                        # Move up in form (Arrow Up key)
+                        current_field = (current_field - 1) % len(fields)
+
+                    elif key == KeyCodes.ARROW_DOWN:
+                        # Move down in form (Arrow Down key)
+                        current_field = (current_field + 1) % len(fields)
+
+                    elif key == KeyCodes.ENTER:
+                        # Start editing current field (Enter/Return key)
+                        editing_mode = True
+                        edit_value = temp_config.get(fields[current_field]['key'], '')
+
+            except KeyboardInterrupt:
+                if editing_mode:
+                    editing_mode = False
+                    edit_value = ""
+                else:
+                    return  # Cancel on Ctrl+C
+
+    def initialize_git_repo(self):
+        """Initialize bare git repository for dotfiles management"""
+        console.clear()
+        
+        # Get settings
+        git_dir = os.path.expanduser(self.config.get('git_dir', '~/.dotfiles.git'))
+        work_tree = os.path.expanduser(self.config.get('work_tree', '~'))
+        remote_url = self.config.get('remote', '')
+        
         console.print(Panel(
-            Text("⚙️ SETTINGS CONFIGURATION\n\nConfigure search paths, exclude patterns, and more...",
-                 style=LIME_PRIMARY),
-            title="Settings",
+            Group(
+                Text("🚀 INIZIALIZZA REPOSITORY GIT BARE", style=f"bold {LIME_PRIMARY}"),
+                Text(""),
+                Text("Configurazione attuale:", style=f"bold {LIME_SECONDARY}"),
+                Text(f"  Git Directory: {git_dir}", style="white"),
+                Text(f"  Work Tree:     {work_tree}", style="white"),
+                Text(f"  Remote URL:    {remote_url if remote_url else 'Non configurato'}", style="white"),
+                Text(""),
+                Text("Questa operazione:", style=f"bold {LIME_ACCENT}"),
+                Text("• Creerà un bare repository in Git Directory", style="white"),
+                Text("• Configurerà il work tree", style="white"),
+                Text("• Aggiungerà il remote se configurato", style="white"),
+                Text("• Creerà un alias 'dotfiles' per gestire i file", style="white")
+            ),
+            title="Repository Initialization",
             border_style=LIME_ACCENT
         ))
-        console.print(f"[{LIME_SECONDARY}]Feature coming soon! Press Enter to continue...[/]")
-        input()
+        
+        # Check if git directory already exists
+        if os.path.exists(git_dir):
+            console.print(f"[yellow]⚠️  Il directory {git_dir} esiste già![/yellow]")
+            if console.input("[yellow]Continuare comunque? (s/N): [/]").strip().lower() != 's':
+                return
+        
+        # Confirm initialization
+        console.print()
+        if console.input(f"[{LIME_ACCENT}]Procedere con l'inizializzazione? (s/N): [/]").strip().lower() != 's':
+            console.print(f"[{LIME_SECONDARY}]Operazione annullata.[/]")
+            console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
+            return
+        
+        console.print()
+        console.print(f"[{LIME_PRIMARY}]🔄 Inizializzazione del repository...[/]")
+        
+        try:
+            # Create git directory parent if it doesn't exist
+            git_dir_parent = os.path.dirname(git_dir)
+            if not os.path.exists(git_dir_parent):
+                os.makedirs(git_dir_parent)
+                console.print(f"[{LIME_SECONDARY}]✓ Creato directory parent: {git_dir_parent}[/]")
+            
+            # Initialize bare repository
+            result = subprocess.run([
+                'git', 'init', '--bare', git_dir
+            ], capture_output=True, text=True, check=True)
+            
+            console.print(f"[{LIME_PRIMARY}]✓ Repository bare inizializzato in: {git_dir}[/]")
+            
+            # Create git alias command for easier management
+            alias_command = f'git --git-dir="{git_dir}" --work-tree="{work_tree}"'
+            
+            # Set up initial configuration
+            config_commands = [
+                [alias_command.split() + ['config', 'status.showUntrackedFiles', 'no']],
+                [alias_command.split() + ['config', 'core.bare', 'false']],
+                [alias_command.split() + ['config', 'core.worktree', work_tree]]
+            ]
+            
+            for cmd in config_commands:
+                subprocess.run(cmd, check=True, capture_output=True)
+            
+            console.print(f"[{LIME_PRIMARY}]✓ Configurazione di base completata[/]")
+            
+            # Add remote if configured
+            if remote_url:
+                try:
+                    subprocess.run(
+                        alias_command.split() + ['remote', 'add', 'origin', remote_url],
+                        check=True, capture_output=True
+                    )
+                    console.print(f"[{LIME_PRIMARY}]✓ Remote 'origin' aggiunto: {remote_url}[/]")
+                except subprocess.CalledProcessError:
+                    console.print(f"[yellow]⚠️  Errore nell'aggiungere il remote (potrebbe già esistere)[/yellow]")
+            
+            console.print()
+            console.print(f"[{LIME_ACCENT}]🎉 Repository inizializzato con successo![/]")
+            console.print()
+            console.print(f"[{LIME_SECONDARY}]Per gestire i dotfiles, usa il comando:[/]")
+            console.print(f"[white]  {alias_command} <git-command>[/]")
+            console.print()
+            console.print(f"[{LIME_SECONDARY}]Esempio per aggiungere un file:[/]")
+            console.print(f"[white]  {alias_command} add ~/.bashrc[/]")
+            console.print(f"[white]  {alias_command} commit -m \"Add bashrc\"[/]")
+            
+            if remote_url:
+                console.print(f"[white]  {alias_command} push origin main[/]")
+            
+            console.print()
+            console.print(f"[{LIME_SECONDARY}]Suggerimento: Crea un alias nel tuo shell:[/]")
+            console.print(f"[white]  alias dotfiles='{alias_command}'[/]")
+            
+        except subprocess.CalledProcessError as e:
+            console.print(f"[red]❌ Errore nell'inizializzazione del repository:[/red]")
+            console.print(f"[red]   {e.stderr.strip() if e.stderr else str(e)}[/red]")
+            
+        except Exception as e:
+            console.print(f"[red]❌ Errore imprevisto: {str(e)}[/red]")
+        
+        console.print()
+        console.input(f"[{LIME_SECONDARY}]Premi Enter per continuare...[/]")
 
     def restore_files(self):
         """Menu option 4: Restore files"""
