@@ -6,4 +6,5 @@ CLAUDE.md
 test_keys.py
 
 # Auto-generated patterns from dotfiles manager config
+__pycache__/
 */__pycache__/**

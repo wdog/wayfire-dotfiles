@@ -752,7 +752,8 @@ class DotfilesManager:
         settings_options = [
             ("1", "✏️  Modifica Settings", "Edit configuration settings"),
             ("2", "🚀  Inizializza Repo Git", "Initialize bare git repository"),
-            ("3", "🔙  Torna al Menu", "Return to main menu")
+            ("3", "📝  Modifica .gitignore", "Edit .gitignore patterns"),
+            ("4", "🔙  Torna al Menu", "Return to main menu")
         ]
         
         while True:
@@ -760,7 +761,7 @@ class DotfilesManager:
             
             # Create menu content
             menu_lines = []
-            for i, (num, title, desc) in enumerate(settings_options):
+            for i, (num, title, _) in enumerate(settings_options):
                 if i == selected_option:
                     menu_lines.append(Text(f"        ► [{num}] {title}", style=f"bold {LIME_ACCENT}"))
                 else:
@@ -775,7 +776,7 @@ class DotfilesManager:
                 Text(""),
                 *menu_lines,
                 Text(""),
-                Text("↑↓/ws: navigate • Enter: select • 1-3: direct • q: back", style=LIME_SECONDARY, justify="center")
+                Text("↑↓/ws: navigate • Enter: select • 1-4: direct • q: back", style=LIME_SECONDARY, justify="center")
             )
             
             # Display menu panel
@@ -798,15 +799,15 @@ class DotfilesManager:
                 # Handle arrow keys
                 if key == KeyCodes.ARROW_UP:
                     # Navigate up in settings menu (Arrow Up key)
-                    selected_option = (selected_option - 1) % 3
+                    selected_option = (selected_option - 1) % 4
                 elif key == KeyCodes.ARROW_DOWN:
                     # Navigate down in settings menu (Arrow Down key)
-                    selected_option = (selected_option + 1) % 3
+                    selected_option = (selected_option + 1) % 4
                 # Handle regular keys (WASD/HJKL style navigation)
                 elif key.lower() == 'w' or key.lower() == 'k':  # Up (W/K keys)
-                    selected_option = (selected_option - 1) % 3
+                    selected_option = (selected_option - 1) % 4
                 elif key.lower() == 's' or key.lower() == 'j':  # Down (S/J keys)
-                    selected_option = (selected_option + 1) % 3
+                    selected_option = (selected_option + 1) % 4
                 elif key == KeyCodes.ENTER or key == '\n':
                     # Select current menu option (Enter key)
                     choice = selected_option + 1
@@ -814,7 +815,7 @@ class DotfilesManager:
                 elif key.lower() == 'q' or key == KeyCodes.ESC:
                     # Go back to main menu (Q key or Escape)
                     return
-                elif key.isdigit() and 1 <= int(key) <= 3:  # Direct number selection
+                elif key.isdigit() and 1 <= int(key) <= 4:  # Direct number selection
                     choice = int(key)
                     break
                     
@@ -829,7 +830,234 @@ class DotfilesManager:
             console.clear()
             self.initialize_git_repo()
         elif choice == 3:
+            console.clear()
+            self.edit_gitignore()
+        elif choice == 4:
             return  # Back to main menu
+
+    def edit_gitignore(self):
+        """Edit .gitignore patterns in ~/.config/dotfiles-manager/"""
+        config_dir = os.path.expanduser("~/.config/dotfiles-manager")
+        gitignore_path = os.path.join(config_dir, ".gitignore")
+
+        # Create directory and default .gitignore if they don't exist
+        if not os.path.exists(gitignore_path):
+            self.create_gitignore_management()
+
+        # Read current .gitignore content
+        try:
+            with open(gitignore_path, 'r') as f:
+                gitignore_content = f.read()
+        except Exception as e:
+            show_popup_notification(f"❌ Errore lettura .gitignore: {e}", 2.0, "red")
+            return
+
+        console.print(Panel(
+            Group(
+                Align.center(Text("📝 EDITOR .GITIGNORE", style=f"bold {LIME_PRIMARY}")),
+                Text(""),
+                Text("Modifica i pattern di esclusione per il repository dotfiles", style=f"{LIME_SECONDARY}"),
+                Text(f"File: {gitignore_path}", style="dim white"),
+                Text(""),
+                Text("💡 Tips:", style=f"bold {LIME_ACCENT}"),
+                Text("  • Una pattern per riga", style="white"),
+                Text("  • # per i commenti", style="white"),
+                Text("  • / alla fine per directory", style="white"),
+                Text("  • * per wildcard", style="white"),
+                Text("  • **/ per match ricorsivo", style="white")
+            ),
+            title="🛠️ GITIGNORE EDITOR",
+            title_align="center",
+            border_style=LIME_PRIMARY,
+            padding=(1, 2)
+        ))
+
+        console.print()
+        console.print("[bold yellow]📝 Contenuto attuale .gitignore:[/bold yellow]")
+        console.print("─" * 80)
+
+        # Display current content with line numbers
+        lines = gitignore_content.strip().split('\n') if gitignore_content.strip() else []
+        if lines:
+            for i, line in enumerate(lines, 1):
+                if line.strip().startswith('#'):
+                    console.print(f"[dim white]{i:3}: {line}[/dim white]")
+                elif line.strip():
+                    console.print(f"[{LIME_PRIMARY}]{i:3}: {line}[/]")
+                else:
+                    console.print(f"[dim]{i:3}: [/dim]")
+        else:
+            console.print("[dim white](Nessun contenuto)[/dim white]")
+
+        console.print("─" * 80)
+        console.print()
+
+        # Options
+        console.print(Panel(
+            Group(
+                Text("🎯 OPZIONI DISPONIBILI", style=f"bold {LIME_ACCENT}", justify="center"),
+                Text(""),
+                Text("[1] 📝 Modifica con editor esterno (nano/vim)", style="white"),
+                Text("[2] ➕ Aggiungi pattern", style="white"),
+                Text("[3] ❌ Rimuovi pattern", style="white"),
+                Text("[4] 🔄 Ripristina default", style="white"),
+                Text("[5] 👀 Solo visualizza", style="white"),
+                Text("[q] 🔙 Torna indietro", style="white")
+            ),
+            border_style=LIME_ACCENT,
+            padding=(1, 2)
+        ))
+
+        console.print()
+        console.print("🎯 Scelta: ", end="")
+        choice = get_key()
+        console.print(f"[bold]{choice}[/bold]")
+
+        if choice == '1':
+            self.edit_gitignore_external(gitignore_path)
+        elif choice == '2':
+            self.add_gitignore_pattern(gitignore_path)
+        elif choice == '3':
+            self.remove_gitignore_pattern(gitignore_path)
+        elif choice == '4':
+            self.reset_gitignore_default(gitignore_path)
+        elif choice == '5':
+            console.print()
+            console.print(f"[{LIME_SECONDARY}]Press any key to continue...[/]")
+            get_key()
+        elif choice.lower() == 'q' or choice == KeyCodes.ESC:
+            return
+        else:
+            show_popup_notification("❌ Opzione non valida", 1.0, "red")
+
+    def edit_gitignore_external(self, gitignore_path):
+        """Open .gitignore in external editor"""
+        import subprocess
+
+        # Try different editors in order of preference
+        editors = ['nano', 'vim', 'vi', 'emacs']
+
+        for editor in editors:
+            try:
+                # Check if editor is available
+                subprocess.run(['which', editor], capture_output=True, check=True)
+                # Open editor
+                console.print(f"[{LIME_PRIMARY}]🚀 Apertura {editor}...[/]")
+                console.print(f"[dim]Tip: Salva e esci per applicare le modifiche[/dim]")
+                subprocess.run([editor, gitignore_path], check=True)
+                show_popup_notification("✅ .gitignore modificato con successo!", 1.0, LIME_PRIMARY)
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
+
+        # If no editor found
+        show_popup_notification("❌ Nessun editor trovato (nano, vim, vi, emacs)", 2.0, "red")
+
+    def add_gitignore_pattern(self, gitignore_path):
+        """Add a pattern to .gitignore"""
+        console.print()
+        console.print(Panel(
+            Group(
+                Text("➕ AGGIUNGI PATTERN", style=f"bold {LIME_PRIMARY}", justify="center"),
+                Text(""),
+                Text("Esempi comuni:", style=f"bold {LIME_ACCENT}"),
+                Text("  .cache/          # Directory cache", style="white"),
+                Text("  *.tmp            # File temporanei", style="white"),
+                Text("  Documents/       # Cartella documenti", style="white"),
+                Text("  **/.git/         # Tutte le directory .git", style="white"),
+                Text(""),
+                Text("Inserisci il pattern da aggiungere:", style=f"{LIME_SECONDARY}")
+            ),
+            border_style=LIME_ACCENT
+        ))
+
+        console.print()
+        console.print("Pattern: ", end="")
+        try:
+            pattern = input().strip()
+            if pattern:
+                with open(gitignore_path, 'a') as f:
+                    f.write(f"\n{pattern}\n")
+                show_popup_notification(f"✅ Pattern '{pattern}' aggiunto!", 1.0, LIME_PRIMARY)
+            else:
+                show_popup_notification("❌ Pattern vuoto", 1.0, "red")
+        except KeyboardInterrupt:
+            show_popup_notification("❌ Operazione annullata", 1.0, "red")
+
+    def remove_gitignore_pattern(self, gitignore_path):
+        """Remove a pattern from .gitignore"""
+        try:
+            with open(gitignore_path, 'r') as f:
+                lines = f.readlines()
+
+            # Filter out empty lines and comments for selection
+            pattern_lines = [(i, line.strip()) for i, line in enumerate(lines) if line.strip() and not line.strip().startswith('#')]
+
+            if not pattern_lines:
+                show_popup_notification("❌ Nessun pattern da rimuovere", 1.0, "red")
+                return
+
+            console.print()
+            console.print(Panel(
+                Group(
+                    Text("❌ RIMUOVI PATTERN", style=f"bold {LIME_PRIMARY}", justify="center"),
+                    Text(""),
+                    Text("Seleziona il pattern da rimuovere:", style=f"{LIME_SECONDARY}"),
+                    Text(""),
+                    *[Text(f"[{j+1}] {pattern}", style="white") for j, (_, pattern) in enumerate(pattern_lines)]
+                ),
+                border_style=LIME_ACCENT
+            ))
+
+            console.print()
+            console.print("Numero pattern: ", end="")
+            try:
+                choice = input().strip()
+                if choice.isdigit():
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(pattern_lines):
+                        original_idx, pattern = pattern_lines[idx]
+                        del lines[original_idx]
+
+                        with open(gitignore_path, 'w') as f:
+                            f.writelines(lines)
+
+                        show_popup_notification(f"✅ Pattern '{pattern}' rimosso!", 1.0, LIME_PRIMARY)
+                    else:
+                        show_popup_notification("❌ Numero non valido", 1.0, "red")
+                else:
+                    show_popup_notification("❌ Input non valido", 1.0, "red")
+            except KeyboardInterrupt:
+                show_popup_notification("❌ Operazione annullata", 1.0, "red")
+        except Exception as e:
+            show_popup_notification(f"❌ Errore: {e}", 2.0, "red")
+
+    def reset_gitignore_default(self, gitignore_path):
+        """Reset .gitignore to default content"""
+        console.print()
+        console.print(Panel(
+            Group(
+                Text("🔄 RIPRISTINA DEFAULT", style=f"bold {LIME_PRIMARY}", justify="center"),
+                Text(""),
+                Text("⚠️  Questa operazione sostituirà completamente", style="bold red"),
+                Text("il contenuto attuale con i pattern di default.", style="red"),
+                Text(""),
+                Text("Tutte le personalizzazioni andranno perse!", style="bold red"),
+                Text(""),
+                Text("Vuoi procedere?", style=f"bold {LIME_ACCENT}")
+            ),
+            border_style="red"
+        ))
+
+        console.print()
+        if get_confirmation("Ripristina .gitignore ai valori default?"):
+            # Remove the existing file and recreate it
+            if os.path.exists(gitignore_path):
+                os.remove(gitignore_path)
+            self.create_gitignore_management()
+            show_popup_notification("✅ .gitignore ripristinato ai valori default!", 1.0, LIME_PRIMARY)
+        else:
+            show_popup_notification("❌ Ripristino annullato", 1.0, "red")
 
     def edit_settings(self):
         """Edit all configuration settings in a compact form interface"""
